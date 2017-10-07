@@ -67,4 +67,16 @@ This function has a second-best minimum far away from the global minimum to trap
 
 #### Griewangk function
 
+    f(x) = 1 + Sum(x^2 / 4000) - Product(cos(x/sqrt(i)))
 
+where n = 10 and -600 <= x <= 600
+
+#### Ackley function
+
+    f(x) = 20 + e - 20exp(-0.2 * sqrt(1/n * Sum(x^2))) - exp(1/n * Sum(cos(2 * PI * x)))
+
+where n = 30 and -30 <= x <= 30
+
+---
+
+Max termination iterations at 100,000. The lower the fitness, the better
