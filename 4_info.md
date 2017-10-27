@@ -15,7 +15,7 @@ A clone requires a share of the group's resource influx, R.
 
 the amount of resource that a group receives per time-step depends on its size, with a larger per capita amount of resource allocated to larger groups.
 
-A group that is twice as larfe received 5% extra per capita.
+A group that is twice as large received 5% extra per capita.
 
 magnitude of the hare of the total, r_i:
 
