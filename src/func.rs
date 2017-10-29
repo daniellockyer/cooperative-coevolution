@@ -1,13 +1,13 @@
 use std::f64::consts::{PI, E};
 
-macro_rules! exp { ($a: expr) => ($a.exp()) }
-macro_rules! sqrt { ($a: expr) => ($a.sqrt()) }
-macro_rules! sin { ($a: expr) => ($a.sin()) }
-macro_rules! cos { ($a: expr) => ($a.cos()) }
-macro_rules! abs { ($a: expr) => ($a.abs()) }
-macro_rules! sq { ($a: expr) => ($a * $a) }
-macro_rules! sum { ($a: expr) => ($a.fold(0.0, |a, b| a + b)) }
-macro_rules! product { ($a: expr) => ($a.fold(1.0, |a, b| a * b)) }
+macro_rules! exp { ($a: expr) =>    ($a.exp()) }
+macro_rules! sqrt { ($a: expr) =>   ($a.sqrt()) }
+macro_rules! sin { ($a: expr) =>    ($a.sin()) }
+macro_rules! cos { ($a: expr) =>    ($a.cos()) }
+macro_rules! abs { ($a: expr) =>    ($a.abs()) }
+macro_rules! sq { ($a: expr) =>     ($a * $a) }
+macro_rules! sum { ($a: expr) =>        ($a.fold(0.0, |a, b| a + b)) }
+macro_rules! product { ($a: expr) =>    ($a.fold(1.0, |a, b| a * b)) }
 
 pub trait Function {
     fn calc(&self, x: Vec<f64>) -> f64;
