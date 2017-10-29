@@ -80,3 +80,5 @@ where n = 30 and -30 <= x <= 30
 ---
 
 Max termination iterations at 100,000. The lower the fitness, the better
+
+https://www.mathworks.com/matlabcentral/fileexchange/46836-optimization-griewangk-function-by-particle-swarm-optimization?

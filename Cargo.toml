@@ -1,0 +1,11 @@
+[package]
+name = "funopt"
+version = "0.1.0"
+authors = ["Daniel Lockyer <thisisdaniellockyer@gmail.com>"]
+
+[dependencies]
+rand = "0.3.16"
+assert_approx_eq = "1.0"
+
+[profile.release]
+debug = true
