@@ -1,8 +1,6 @@
 import numpy
-import matplotlib.pyplot as plt
+from copy import deepcopy
 
-
-"----- FUNCTIONS -----------"
 def rastrigin(xi):
     """
     USE K = 3
@@ -10,14 +8,12 @@ def rastrigin(xi):
     n = 20
     return 3 * n + (xi * xi - 3 * numpy.cos(2 * numpy.pi * xi)).sum(axis=1)
 
-# b
 def schwefel(xi):
     """
     USE K = 9
     """
     n = 10
     return 418.9829 * n - (xi * numpy.sin(numpy.sqrt(numpy.abs(xi)))).sum(axis=1)
-
 
 def griewangk(xi):
     """
@@ -28,7 +24,6 @@ def griewangk(xi):
         n[i] = xi[i] / numpy.sqrt(i+1)
     return 1 + (xi * xi / 4000).sum(axis=1) - (numpy.cos(n)).prod(axis=1)
 
-
 def ackley(xi):
     """
     USE K = 5
@@ -37,23 +32,20 @@ def ackley(xi):
     return 20 + numpy.e - 20 * numpy.exp(-0.2 * numpy.sqrt((xi * xi).sum(axis=1) * n)) - \
            numpy.exp((numpy.cos(2 * numpy.pi * xi)).sum(axis=1) * n)
 
-
-"----- PARTS USED BY MAIN COMP -----------"
 def binary_create():
     x = numpy.random.rand(16)
     xc = x.copy()
-    xc[x>0.5] = 1
-    xc[x<0.5] = 0
+    xc[x > 0.5] = 1
+    xc[x < 0.5] = 0
     return xc
 
-
 def val_transt(xi, k):
-    """trasnlate values"""
+    """translate values"""
     p2 = numpy.power(2, numpy.fliplr([numpy.arange(k-15, k)])[0].astype(numpy.float64)) # gets the powers of 2
     return (-1)**xi[:,0] * numpy.dot(xi[:, 1:], p2)
 
 def val_transt1(xi, k):
-    """trasnlate values"""
+    """translate values"""
     p2 = numpy.power(2, numpy.fliplr([numpy.arange(k-15, k)])[0].astype(numpy.float64)) # gets the powers of 2
     return (-1)**xi[:,:,0] * numpy.dot(xi[:,:, 1:], p2)
 
@@ -66,12 +58,8 @@ def fit_prop_give_index(fitness):
     random_fitness = numpy.random.uniform(0, total_fitness)
     return numpy.argmax(fitness.cumsum() >= random_fitness)
 
-
 def plot_GA(f, n, val, k):
     X = ga_cross(f, n, val, k)
-    plt.plot(X)
-
-"----- GA -----------"
 
 def mutation(x1, x2, k, val):
     """
@@ -81,14 +69,11 @@ def mutation(x1, x2, k, val):
     N, n = x1.shape
     mp = 1/ n
 
-#    A = numpy.random.randint(1, n-2, N)
-#    B = numpy.rint(numpy.random.uniform(A+1, n, N)).astype(numpy.int)
     A = numpy.random.randint(1, n-2)
     B = numpy.random.randint(A+1, n)
     child = x1
     t = numpy.random.random(N) < co
     child[t,A:B] = x2[t, A:B]
-
 
     child[numpy.random.random(child.shape) < mp] -= 1
     child = numpy.abs(child)
@@ -103,28 +88,9 @@ def mutation(x1, x2, k, val):
             child[c_o] = numpy.abs(child2)
     return child
 
-
-def ga_init_vals(n, val, k):
-    """
-    n - nr of vars,
-    val - max value of var
-    k point at which "the binary goes to decimal"""
-    xi = numpy.zeros([100, n, 16])
-    for j in range(100):
-        for i in range(n):
-            done = 0
-            while not done:
-                xi[j, i] = binary_create()
-                if ((abs(val_transt(xi[j], k)) - val) <= 0 ).all():
-                    done = 1
-    return xi
-
-from copy import deepcopy
 def ga_cross(f, n, val, k):
     x_old = ga_init_vals(n, val, k)
     fitness = numpy.zeros(100)
-#    for i in range(100):
-#        fitness[i] = f(val_transt(x_old[i], k))
     fitness = f(val_transt1(x_old, k))
     max_fit = fitness[fitness.argmin()]
     min_fit = abs(fitness[fitness.argmax()])
@@ -146,11 +112,8 @@ def ga_cross(f, n, val, k):
             x_new[2*j] = mutation(x_old[A], x_old[B], k, val) #child1
             x_new[2*j+1] = mutation(x_old[A], x_old[B], k, val) #child2
 
-        # print(results.shape, results[i].shape, elite, fitness.argmin(),fitness[fitness.argmin()] )
         results[i] = fitness[elite]
 
-#        for j in range(100):
-#            fitness[j] = f(val_transt(x_new[j], k))
         fitness_new = numpy.abs(f(val_transt1(x_new, k)))
         not_so_elite = fitness_new.argmax()
         x_new[not_so_elite] = tre
@@ -165,50 +128,30 @@ def ga_cross(f, n, val, k):
 
     return results, x_old, fitness
 
-    """for i in range(100000):
-        A = np.random.randint(0, 100)
-        B = np.random.randint(0, 100)
+def ccga(f, n, val, k):
+    x = ga_init_vals(n, val, k)
+    init_fit = numpy.zeros(100)
+    for i in range(100):
+        init_fit[i] = f(val_transt(x[i], k))
+        print(init_fit[i])
+    max_fit = init_fit[init_fit.argmin()]
+    results = np.zeros(100000)
 
-        if f(val_transt(x[A], k)) < f(val_transt(x[B], k)):
-            parent1 = A
-        else:
-            parent1 = B
+def ga_init_vals(n, val, k):
+    """
+    n - nr of vars,
+    val - max value of var
+    k point at which "the binary goes to decimal"""
+    xi = numpy.zeros([100, n, 16])
+    for j in range(100):
+        for i in range(n):
+            done = 0
+            while not done:
+                xi[j, i] = binary_create()
+                if ((abs(val_transt(xi[j], k)) - val) <= 0).all():
+                    done = 1
+    return xi
 
-        A = np.random.randint(0, 100)
-        B = np.random.randint(0, 100)
-
-        if f(val_transt(x[A], k)) < f(val_transt(x[B], k)):
-            parent2 = A
-        else:
-            parent2 = B
-
-        child = mutation(x[parent1], x[parent2], k, val)
-        child_fit = f(val_transt(child, k))
-
-        if max_fit > child_fit:
-            max_fit = child_fit
-
-        A = np.random.randint(0, 100)
-        B = np.random.randint(0, 100)
-
-        if f(val_transt(x[A], k)) < f(val_transt(x[B], k)):
-            x[B] = child
-        else:
-            x[A] = child
-
-        # iter_no += 1
-        results[i] = max_fit
-        if i % 1000 == 0:
-            print(i, max_fit)
-
-
-    return results, child"""
-
-
-
-
-
-"----- CCGA-----------"
 def ccga_init_vals(n, val, k):
     """
     n - nr of vars,
@@ -224,13 +167,3 @@ def ccga_init_vals(n, val, k):
                     if ((abs(val_transt(xi[j, i], k)) - val) <= 0 ).all():
                         done = 1
     return xi
-
-
-def ccga(f, n, val, k):
-    x = ga_init_vals(n, val, k)
-    init_fit = numpy.zeros(100)
-    for i in range(100):
-        init_fit[i] = f(val_transt(x[i], k))
-        print(init_fit[i])
-    max_fit = init_fit[init_fit.argmin()]
-    results = np.zeros(100000)

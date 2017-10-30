@@ -21,12 +21,8 @@ pub struct Rosenbrock;
 
 impl Function for Rastrigin {
     fn calc(&self, x: Vec<f64>) -> f64 {
-    	let n = 20;
-    	assert_eq!(x.len(), n);
-
-    	let sum: f64 = sum!((0 .. n).map(|i| {
-    		sq!(x[i]) - 3.0 * cos!(2.0 * PI * x[i])
-    	}));
+    	let n = x.len();
+    	let sum: f64 = sum!((0 .. n).map(|i| sq!(x[i]) - 3.0 * cos!(2.0 * PI * x[i])));
 
         3.0 * (n as f64) + sum
     }
@@ -34,9 +30,7 @@ impl Function for Rastrigin {
 
 impl Function for Schwefel {
     fn calc(&self, x: Vec<f64>) -> f64 {
-    	let n = 10;
-    	assert_eq!(x.len(), n);
-    	
+    	let n = x.len();
     	let sum: f64 = sum!((0 .. n).map(|i| x[i] * sin!(sqrt!(abs!(x[i])))));
 
     	418.982887 * (n as f64) - sum
@@ -45,14 +39,9 @@ impl Function for Schwefel {
 
 impl Function for Griewangk {
     fn calc(&self, x: Vec<f64>) -> f64 {
-    	let n = 10;
-    	assert_eq!(x.len(), n);
-    	
+    	let n = x.len();
     	let sum: f64 = sum!((0 .. n).map(|i| sq!(x[i]) / 4000.0));
-
-    	let product: f64 = product!((0 .. n).map(|i| {
-    		cos!(x[i] / sqrt!(((i + 1) as f64)))
-    	}));
+    	let product: f64 = product!((0 .. n).map(|i| cos!(x[i] / sqrt!(((i + 1) as f64)))));
 
     	1.0 + sum - product
     }
@@ -60,9 +49,7 @@ impl Function for Griewangk {
 
 impl Function for Ackley {
     fn calc(&self, x: Vec<f64>) -> f64 {
-    	let n = 30;
-    	assert_eq!(x.len(), n);
-    	
+    	let n = x.len();
     	let sum1: f64 = sum!((0 .. n).map(|i| sq!(x[i])));
     	let sum2: f64 = sum!((0 .. n).map(|i| cos!(2.0 * PI * x[i])));
 
@@ -74,9 +61,6 @@ impl Function for Ackley {
 
 impl Function for Rosenbrock {
     fn calc(&self, x: Vec<f64>) -> f64 {
-    	let n = 2;
-    	assert_eq!(x.len(), n);
-
     	100.0 * sq!(sq!(x[0]) - x[1]) + sq!(1.0 - x[0])
     }
 }
@@ -88,8 +72,8 @@ mod tests {
     #[test]
     fn it_works() {
     	assert_approx_eq!(0.0, Rastrigin.calc([0.0; 20].to_vec()));
-    	assert_approx_eq!(0.0, Griewangk.calc([0.0; 10].to_vec()));
         assert_approx_eq!(0.0, Schwefel.calc([420.968746; 10].to_vec()), 1e-5f64);
+        assert_approx_eq!(0.0, Griewangk.calc([0.0; 10].to_vec()));
         assert_approx_eq!(0.0, Ackley.calc([0.0; 30].to_vec()));
         assert_approx_eq!(0.0, Rosenbrock.calc([1.0; 2].to_vec()));
     }
