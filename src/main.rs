@@ -36,7 +36,7 @@ impl EvoPheno {
                 new = (new & (!(1 << i))) | (j_value << i);
             }
         }
-        
+
         EvoPheno::new(new)
     }
 
@@ -57,6 +57,12 @@ fn make_vec(size: u32, value: u16) -> Vec<f64> {
     (0..size).map(|_| f64::from(f16::from_bits(value))).collect()
 }
 
+fn gen_pair() -> (usize, usize) {
+    let a_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
+    let b_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
+    (a_index, b_index)
+}
+
 fn main() {
     let mut population: Vec<EvoPheno> = (0..POPULATION_SIZE).map(|_| EvoPheno::new(thread_rng().gen::<u16>())).collect();
 
@@ -73,17 +79,15 @@ fn main() {
     println!("iteration,fitness,value");
 
     while iterations < 1000 {
-        let a_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
-        let b_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
-        let parent1_index = if population[a_index].fitness < population[b_index].fitness {
+        let (a_index, b_index) = gen_pair();
+       let parent1_index = if population[a_index].fitness < population[b_index].fitness {
             a_index
         } else {
             b_index
         };
 
         let mut child = if crossover {
-            let c_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
-            let d_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
+            let (c_index, d_index) = gen_pair();
             let parent2_index = if population[c_index].fitness < population[d_index].fitness {
                 c_index
             } else {
@@ -99,8 +103,7 @@ fn main() {
         iterations += 1;
         child.fitness = function.calc(make_vec(dimensions, child.val));
 
-        let c_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
-        let d_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
+        let (c_index, d_index) = gen_pair();
 
         let new_index = if population[c_index].fitness < population[d_index].fitness {
             d_index
