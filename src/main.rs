@@ -7,11 +7,8 @@ mod func;
 
 use rand::{thread_rng, Rng};
 use half::f16;
-use func::Function;
-use std::f64;
-use std::{thread, time};
+use std::{env, f64};
 
-const POPULATION_SIZE: usize = 100;
 const TARGET_LEN: usize = 16;
 
 #[derive(Clone, Debug)]
@@ -59,8 +56,8 @@ fn make_vec(size: u32, value: u16) -> Vec<f64> {
 }
 
 fn tournament(population: &Vec<EvoPheno>) -> (usize, usize) {
-    let a_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
-    let b_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
+    let a_index = thread_rng().gen_range(0, population.len()) as usize;
+    let b_index = thread_rng().gen_range(0, population.len()) as usize;
 
     if population[a_index].fitness < population[b_index].fitness {
         (a_index, b_index)
@@ -69,10 +66,12 @@ fn tournament(population: &Vec<EvoPheno>) -> (usize, usize) {
     }
 }
 
-fn print_pop(iterations: u32, population: &Vec<EvoPheno>) {
-    print!("{}[2J", 27 as char);
-    for p in population {
-        println!("{:?} = {}", make_vec(1, p.val), p.fitness);
+fn print_pop(iterations: u32, population: &Vec<EvoPheno>, show_pop: bool) {
+    if show_pop {
+        print!("{}[2J", 27 as char);
+        for p in population {
+            println!("{:?} = {}", make_vec(1, p.val), p.fitness);
+        }
     }
 
     let mut lowest_fitness = f64::MAX;
@@ -83,27 +82,41 @@ fn print_pop(iterations: u32, population: &Vec<EvoPheno>) {
             best_value = f64::from(f16::from_bits(p.val));
         }
     }
-    println!("\n{},{},{}", iterations, best_value, lowest_fitness);
+    println!("{},{},{}", iterations, best_value, lowest_fitness);
 }
 
 fn main() {
-    let mut population: Vec<EvoPheno> =
-        (0..POPULATION_SIZE).map(|_| EvoPheno::new(thread_rng().gen::<u16>())).collect();
+    let args: Vec<String> = env::args().collect();
 
-//    let (function, dimensions) = (func::Rastrigin, 20);
-//    let (function, dimensions) = (func::Schwefel, 10);
-    let (function, dimensions) = (func::Griewangk, 10);
-//    let (function, dimensions) = (func::Ackley, 30);
-//    let (function, dimensions) = (func::Rosenbrock, 2);
+    if args.len() < 4 {
+        eprintln!("Usage: coopco <population_size> <crossover> <function>");
+        std::process::exit(1);
+    }
+
+    let population_size: u32 = args[1].parse().expect("First arg is population_size");
+    let crossover: bool = args[2].parse().expect("Second arg is crossover");
+
+    let (function, dimensions): (Box<func::Function+'static>, u32) = match args[3].as_str() {
+        "Ra" => (Box::new(func::Rastrigin), 20),
+        "Sc" => (Box::new(func::Schwefel), 10),
+        "Gr" => (Box::new(func::Griewangk), 10),
+        "Ac" => (Box::new(func::Ackley), 10),
+        "Ro" => (Box::new(func::Rosenbrock), 2),
+        _ => {
+            println!("Defaulting to Rastrigin");
+            (Box::new(func::Rastrigin), 20)
+        }
+    };
+
+    let mut population: Vec<EvoPheno> =
+        (0..population_size).map(|_| EvoPheno::new(thread_rng().gen::<u16>())).collect();
 
     for p in &mut population {
         p.fitness = function.calc(make_vec(dimensions, p.val)).abs();
     }
 
     let mut iterations = 0;
-    let crossover = true;
-
-    println!("iteration,fitness,value");
+    println!("iteration,value,fitness");
 
     while iterations < 1000 {
         let (parent1_index, _) = tournament(&population);
@@ -120,8 +133,6 @@ fn main() {
 
         let (_, new_index) = tournament(&population);
         std::mem::replace(&mut population[new_index], child);
-
-        print_pop(iterations, &population);
-//        thread::sleep(time::Duration::from_millis(10));
+        print_pop(iterations, &population, false);
     }
 }
