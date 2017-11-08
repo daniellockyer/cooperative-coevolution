@@ -1,17 +1,81 @@
 #![feature(alloc_system)] extern crate alloc_system;
-#[macro_use] extern crate assert_approx_eq;
+#[cfg(test)] #[macro_use] extern crate assert_approx_eq;
 extern crate rand;
 extern crate half;
 
-mod func;
+macro_rules! exp { ($a: expr) => ($a.exp()) }
+macro_rules! sqrt { ($a: expr) => ($a.sqrt()) }
+macro_rules! sin { ($a: expr) => ($a.sin()) }
+macro_rules! cos { ($a: expr) => ($a.cos()) }
+macro_rules! abs { ($a: expr) => ($a.abs()) }
+macro_rules! sq { ($a: expr) => ($a * $a) }
+macro_rules! sum { ($n: expr, $a: expr) => ((0 .. $n).map($a).fold(0.0, |a, b| a + b)) }
+macro_rules! product { ($a: expr) => ($a.fold(1.0, |a, b| a * b)) }
 
 use rand::{thread_rng, Rng};
 use half::f16;
 use std::{env, f64};
+use std::f64::consts::{PI, E};
 
 const TARGET_LEN: usize = 16;
 
-#[derive(Clone, Debug)]
+trait Function {
+    fn calc(&self, x: Vec<f64>) -> f64;
+}
+
+struct Rastrigin;
+struct Schwefel;
+struct Griewangk;
+struct Ackley;
+struct Rosenbrock;
+
+impl Function for Rastrigin {
+    fn calc(&self, x: Vec<f64>) -> f64 {
+        let n = x.len();
+        let sum: f64 = sum!(n, |i| sq!(x[i]) - 3.0 * cos!(2.0 * PI * x[i]));
+
+        3.0 * (n as f64) + sum
+    }
+}
+
+impl Function for Schwefel {
+    fn calc(&self, x: Vec<f64>) -> f64 {
+        let n = x.len();
+        let sum: f64 = sum!(n, |i| x[i] * sin!(sqrt!(abs!(x[i]))));
+
+        418.982887 * (n as f64) - sum
+    }
+}
+
+impl Function for Griewangk {
+    fn calc(&self, x: Vec<f64>) -> f64 {
+        let n = x.len();
+        let sum: f64 = sum!(n, |i| sq!(x[i]) / 4000.0);
+        let product: f64 = product!((0 .. n).map(|i| cos!(x[i] / sqrt!(((i + 1) as f64)))));
+
+        1.0 + sum - product
+    }
+}
+
+impl Function for Ackley {
+    fn calc(&self, x: Vec<f64>) -> f64 {
+        let n = x.len();
+        let sum1: f64 = sum!(n, |i| sq!(x[i]));
+        let sum2: f64 = sum!(n, |i| cos!(2.0 * PI * x[i]));
+
+        20.0 + E 
+            - (20.0 * exp!(-0.2 * sqrt!(1.0 / (n as f64) * sum1))) 
+            - exp!(1.0 / (n as f64) * sum2)
+    }
+}
+
+impl Function for Rosenbrock {
+    fn calc(&self, x: Vec<f64>) -> f64 {
+        100.0 * sq!(sq!(x[0]) - x[1]) + sq!(1.0 - x[0])
+    }
+}
+
+#[derive(Debug)]
 struct EvoPheno {
     val: u16,
     fitness: f64,
@@ -89,37 +153,33 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 4 {
-        eprintln!("Usage: coopco <population_size> <crossover> <function> <print>");
+        eprintln!("Usage: coopco <population_size> <crossover> <function>");
         std::process::exit(1);
     }
 
     let population_size: u32 = args[1].parse().expect("First arg is population_size");
     let crossover: bool = args[2].parse().expect("Second arg is crossover");
-    let print: bool = args[3].parse().expect("Third arg is printing");
 
-    let (function, dimensions): (Box<func::Function+'static>, u32) = match args[4].as_str() {
-        "Ra" => (Box::new(func::Rastrigin), 20),
-        "Sc" => (Box::new(func::Schwefel), 10),
-        "Gr" => (Box::new(func::Griewangk), 10),
-        "Ac" => (Box::new(func::Ackley), 10),
-        "Ro" => (Box::new(func::Rosenbrock), 2),
+    let (function, dimensions): (Box<Function+'static>, u32) = match args[3].as_str() {
+        "Ra" => (Box::new(Rastrigin), 20),
+        "Sc" => (Box::new(Schwefel), 10),
+        "Gr" => (Box::new(Griewangk), 10),
+        "Ac" => (Box::new(Ackley), 10),
+        "Ro" => (Box::new(Rosenbrock), 2),
         _ => {
             println!("Defaulting to Rastrigin");
-            (Box::new(func::Rastrigin), 20)
+            (Box::new(Rastrigin), 20)
         }
     };
 
-    let mut population: Vec<EvoPheno> =
-        (0..population_size).map(|_| EvoPheno::new(thread_rng().gen::<u16>())).collect();
-
-    for p in &mut population {
+    let mut population: Vec<EvoPheno> = (0..population_size).map(|_| {
+        let mut p = EvoPheno::new(thread_rng().gen::<u16>());
         p.fitness = function.calc(make_vec(dimensions, p.val)).abs();
-    }
+        p
+    }).collect();
 
     let mut iterations = 0;
-    if print {
-        println!("iteration,value,fitness");
-    }
+    println!("iteration,value,fitness");
 
     while iterations < 1000 {
         let (parent1_index, _) = tournament(&population);
@@ -137,8 +197,20 @@ fn main() {
         let (_, new_index) = tournament(&population);
         std::mem::replace(&mut population[new_index], child);
 
-        if print {
-            print_pop(iterations, &population, false);
-        }
+        print_pop(iterations, &population, false);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_works() {
+        assert_approx_eq!(0.0, Rastrigin.calc([0.0; 20].to_vec()));
+        assert_approx_eq!(0.0, Schwefel.calc([420.968746; 10].to_vec()), 1e-5f64);
+        assert_approx_eq!(0.0, Griewangk.calc([0.0; 10].to_vec()));
+        assert_approx_eq!(0.0, Ackley.calc([0.0; 30].to_vec()));
+        assert_approx_eq!(0.0, Rosenbrock.calc([1.0; 2].to_vec()));
     }
 }
