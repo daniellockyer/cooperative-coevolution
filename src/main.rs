@@ -9,8 +9,9 @@ use rand::{thread_rng, Rng};
 use half::f16;
 use func::Function;
 use std::f64;
+use std::{thread, time};
 
-const POPULATION_SIZE: usize = 25;
+const POPULATION_SIZE: usize = 40;
 const TARGET_LEN: usize = 16;
 
 #[derive(Clone, Debug)]
@@ -23,7 +24,7 @@ impl EvoPheno {
     fn new(t: u16) -> EvoPheno {
         EvoPheno {
             val: t,
-            fitness: f64::MAX //This might be wrong
+            fitness: f64::MAX
         }
     }
 
@@ -66,11 +67,18 @@ fn gen_pair() -> (usize, usize) {
 fn main() {
     let mut population: Vec<EvoPheno> = (0..POPULATION_SIZE).map(|_| EvoPheno::new(thread_rng().gen::<u16>())).collect();
 
-    let function = func::Ackley;
-    let dimensions = 30;
+//    let (function, dimensions) = (func::Rastrigin, 20);
+//    let (function, dimensions) = (func::Schwefel, 10);
+//    let (function, dimensions) = (func::Griewankg, 10);
+//    let (function, dimensions) = (func::Ackley, 30);
+    let (function, dimensions) = (func::Rosenbrock, 10);
 
     for p in &mut population {
         p.fitness = function.calc(make_vec(dimensions, p.val));
+    }
+
+    for p in &population {
+        println!("{:?} = {}", make_vec(1, p.val), p.fitness);
     }
 
     let mut iterations = 0;
@@ -113,6 +121,12 @@ fn main() {
 
         std::mem::replace(&mut population[new_index], child);
 
+        print!("{}[2J", 27 as char);
+
+        for p in &population {
+            println!("{:?} = {}", make_vec(1, p.val), p.fitness);
+        }
+
         let mut lowest_fitness = f64::MAX;
         let mut best_value = f64::MAX;
 
@@ -123,6 +137,8 @@ fn main() {
             }
         }
 
-        println!("{},{},{}", iterations, lowest_fitness, best_value);
+        println!("\n{},{},{}", iterations, best_value, lowest_fitness);
+
+        thread::sleep(time::Duration::from_millis(25));
     }
 }
