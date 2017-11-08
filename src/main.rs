@@ -89,14 +89,15 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 4 {
-        eprintln!("Usage: coopco <population_size> <crossover> <function>");
+        eprintln!("Usage: coopco <population_size> <crossover> <function> <print>");
         std::process::exit(1);
     }
 
     let population_size: u32 = args[1].parse().expect("First arg is population_size");
     let crossover: bool = args[2].parse().expect("Second arg is crossover");
+    let print: bool = args[3].parse().expect("Third arg is printing");
 
-    let (function, dimensions): (Box<func::Function+'static>, u32) = match args[3].as_str() {
+    let (function, dimensions): (Box<func::Function+'static>, u32) = match args[4].as_str() {
         "Ra" => (Box::new(func::Rastrigin), 20),
         "Sc" => (Box::new(func::Schwefel), 10),
         "Gr" => (Box::new(func::Griewangk), 10),
@@ -116,7 +117,9 @@ fn main() {
     }
 
     let mut iterations = 0;
-    println!("iteration,value,fitness");
+    if print {
+        println!("iteration,value,fitness");
+    }
 
     while iterations < 1000 {
         let (parent1_index, _) = tournament(&population);
@@ -133,6 +136,9 @@ fn main() {
 
         let (_, new_index) = tournament(&population);
         std::mem::replace(&mut population[new_index], child);
-        print_pop(iterations, &population, false);
+
+        if print {
+            print_pop(iterations, &population, false);
+        }
     }
 }
