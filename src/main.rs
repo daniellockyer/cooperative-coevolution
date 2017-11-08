@@ -97,7 +97,7 @@ fn main() {
 //    let (function, dimensions) = (func::Rosenbrock, 2);
 
     for p in &mut population {
-        p.fitness = function.calc(make_vec(dimensions, p.val));
+        p.fitness = function.calc(make_vec(dimensions, p.val)).abs();
     }
 
     let mut iterations = 0;
@@ -116,13 +116,12 @@ fn main() {
         };
 
         iterations += 1;
-        child.fitness = function.calc(make_vec(dimensions, child.val));
+        child.fitness = function.calc(make_vec(dimensions, child.val)).abs();
 
         let (_, new_index) = tournament(&population);
         std::mem::replace(&mut population[new_index], child);
 
         print_pop(iterations, &population);
-
 //        thread::sleep(time::Duration::from_millis(10));
     }
 }
