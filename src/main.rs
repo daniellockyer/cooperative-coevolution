@@ -278,7 +278,6 @@ fn run_ccga(function: &Function, dimensions: u32) {
             }
 
             let test_fitness = function.calc(&test_vec);
-            println!("{:?} = {}", test_vec, test_fitness);
             fitness_data.push((f64::from(iterations), test_fitness));
         }
 
