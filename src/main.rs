@@ -18,109 +18,8 @@ macro_rules! product { ($n: expr, $a: expr) => ((0 .. $n).map($a).fold(1.0, |a, 
 
 const TARGET_LEN: usize = 16;
 const POPULATION_SIZE: usize = 100;
-const PLOT_WIDTH: u32 = 640;
-const PLOT_HEIGHT: u32 = 480;
-
-enum Function {
-    Rosenbrock,
-    Beale,
-    ThreeHump,
-    Rastrigin,
-    Matyas,
-    Levi13,
-    Booth,
-    CrossInTray,
-    Ackley,
-    Schaffer2,
-    Easom,
-    Sphere,
-    Schwefel,
-    Eggholder,
-    Griewangk,
-}
-
-impl Function {
-    fn bounds(&self) -> f64 {
-        match *self {
-            Function::Rosenbrock => 2.048,
-            Function::Beale => 4.5,
-            Function::ThreeHump => 5.0,
-            Function::Rastrigin => 5.12,
-            Function::Matyas
-            | Function::Levi13
-            | Function::Booth
-            | Function::CrossInTray => 10.0,
-            Function::Ackley => 30.0,
-            Function::Schaffer2
-            | Function::Easom
-            | Function::Sphere => 100.0,
-            Function::Schwefel => 500.0,
-            Function::Eggholder => 512.0,
-            Function::Griewangk => 600.0,
-        }
-    }
-
-    fn calc(&self, x: &[f64]) -> f64 {
-        let n = x.len();
-
-        match *self {
-            Function::Beale => {
-                sq!(1.5 - x[0] + x[0] * x[1])
-                    + sq!(2.25 - x[0] + x[0] * sq!(x[1]))
-                    + sq!(2.625 - x[0] + x[0] * x[1].powi(3))
-            },
-            Function::Schaffer2 => {
-                0.5 + ((sq!(sin!(sq!(x[0]) - sq!(x[1]))) - 0.5) / sq!(1.0 + 0.001 * (sq!(x[0] + sq!(x[1])))))
-            },
-            Function::Matyas => {
-                0.26 * (sq!(x[0]) + sq!(x[1])) - 0.48 * x[0] * x[1]
-            },
-            Function::ThreeHump => {
-                2.0 * sq!(x[0]) - 1.05 * x[0].powi(4) + (x[0].powi(6) / 6.0) + (x[0] * x[1]) + sq!(x[1])
-            },
-            Function::Easom => {
-                - cos!(x[0]) * cos!(x[1]) * exp!(-(sq!(x[0] - PI) + sq!(x[1] - PI)))
-            },
-            Function::Sphere => {
-                sum!(n, |i| sq!(x[i]))
-            },
-            Function::Rastrigin => {
-                3.0 * (n as f64) + sum!(n, |i| sq!(x[i]) - 3.0 * cos!(2.0 * PI * x[i]))
-            },
-            Function::Schwefel => {
-                418.982887 * (n as f64) - sum!(n, |i| x[i] * sin!(sqrt!(abs!(x[i]))))
-            },
-            Function::Griewangk => {
-                1.0
-                    + sum!(n, |i| sq!(x[i]) / 4000.0)
-                    - product!(n, |i| cos!(x[i] / sqrt!(((i + 1) as f64))))
-            },
-            Function::Ackley => {
-                20.0 + E
-                    - (20.0 * exp!(-0.2 * sqrt!(1.0 / (n as f64) * sum!(n, |i| sq!(x[i])))))
-                    - exp!(1.0 / (n as f64) * sum!(n, |i| cos!(2.0 * PI * x[i])))
-            },
-            Function::Rosenbrock => {
-                100.0 * sq!(sq!(x[0]) - x[1]) + sq!(1.0 - x[0])
-            },
-            Function::Levi13 => {
-                sq!(sin!(3.0 * PI * x[0]))
-                    + sq!(x[0] - 1.0) * (1.0 + sq!(sin!(3.0 * PI * x[1])))
-                    + sq!(x[1] - 1.0) * (1.0 + sq!(sin!(2.0 * PI * x[1])))
-            },
-            Function::CrossInTray => {
-                -0.0001
-                    * (abs!(sin!(x[0]) * sin!(x[1]) * exp!(abs!(100.0 - sqrt!(sq!(x[0]) + sq!(x[1])) / PI))) + 1.0).powf(0.1)
-            },
-            Function::Booth => {
-                sq!(x[0] + 2.0 * x[1] - 7.0) + sq!(2.0 * x[0] + x[1] - 5.0)
-            },
-            Function::Eggholder => {
-                - (x[1] + 47.0) * sin!(sqrt!(abs!((x[0] / 2.0) + x[1] + 47.0))) - x[0] * sin!(sqrt!(abs!(x[0] - (x[1] + 47.0))))
-            },
-        }
-    }
-}
+const PLOT_WIDTH: u32 = 1024;
+const PLOT_HEIGHT: u32 = 300;
 
 #[derive(Debug, Clone, Copy)]
 struct EvoPheno {
@@ -226,25 +125,25 @@ fn get_best(population: &[EvoPheno], bounds: f64) -> (f64, f64) {
 }
 
 fn make_vec_species(population: &[EvoPheno], child_val: f64, child_pos: usize, bounds: f64) -> Vec<f64> {
-    let mut res = Vec::new();
-
-    for d in 0..population.len() / POPULATION_SIZE {
+    (0..population.len() / POPULATION_SIZE).map(|d| {
         if d == child_pos {
-            res.push(child_val);
+            child_val
         } else {
-            res.push(get_best(&population[d * POPULATION_SIZE.. (d+1) * POPULATION_SIZE].to_vec(), bounds).0);
+            get_best(&population[d * POPULATION_SIZE.. (d+1) * POPULATION_SIZE].to_vec(), bounds).0
         }
-    }
-    res
+    }).collect()
 }
 
 fn total_fitness(population: &[EvoPheno]) -> f64 {
     sum!(population.len(), |i| population[i].fitness)
 }
 
-fn run_ccga(function: &Function, dimensions: u32) {
+fn run_ccga(function: &Function) {
     let crossover = true;
-    let page = flot::Page::new("");
+    let dimensions = function.dimensions();
+    let bounds = function.bounds();
+
+    let page = flot::Page::new("CCGA");
     let p_fitness = page.plot("Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
 
     for _ in 0..50 {
@@ -254,31 +153,27 @@ fn run_ccga(function: &Function, dimensions: u32) {
         for iterations in 0..1000 {
             for d in 0..dimensions {
                 let offset = (d as usize) * POPULATION_SIZE;
-                let (start, end) = (offset, offset + POPULATION_SIZE);
-                let pop_vec = &population[start..end].to_vec();
+                let pop_vec = &population[offset..offset + POPULATION_SIZE].to_vec();
                 let parent1_index = offset + tournament(pop_vec).0;
 
                 let mut child = if crossover {
                     let parent2_index = offset + tournament(pop_vec).0;
-                    population[parent1_index].crossover(&population[parent2_index]).mutate()
+                    population[parent1_index].multi_crossover(&population[parent2_index]).mutate()
                 } else {
                     population[parent1_index].mutate()
                 };
 
-                child.fitness = function.calc(&make_vec_species(&population, real_val(function.bounds(), child.val), d as usize, function.bounds()));
+                child.fitness = function.calc(&make_vec_species(&population, real_val(bounds, child.val), d as usize, bounds));
                 let new_index = offset + tournament(pop_vec).1;
                 std::mem::replace(&mut population[new_index], child);
             }
 
-            let mut test_vec = Vec::new();
-            for dt in 0..dimensions {
-                let (start, end) = (dt as usize * POPULATION_SIZE, (dt as usize + 1) * POPULATION_SIZE);
-                let (value, _) = get_best(&population[start..end].to_vec(), function.bounds());
-                test_vec.push(value);
-            }
+            let mut test_vec: Vec<f64> = (0..dimensions).map(|d| {
+                let offset = (d as usize) * POPULATION_SIZE;
+                get_best(&population[offset..offset + POPULATION_SIZE].to_vec(), bounds).0
+            }).collect();
 
-            let test_fitness = function.calc(&test_vec);
-            fitness_data.push((f64::from(iterations), test_fitness));
+            fitness_data.push((f64::from(iterations), function.calc(&test_vec)));
         }
 
         p_fitness.lines("", fitness_data).line_width(1);
@@ -286,9 +181,12 @@ fn run_ccga(function: &Function, dimensions: u32) {
     page.render("results/ccga.html").expect("IO error");
 }
 
-fn run_ga(function: &Function, dimensions: u32) {
+fn run_ga(function: &Function) {
     let crossover = true;
-    let page = flot::Page::new("");
+    let dimensions = function.dimensions();
+    let bounds = function.bounds();
+
+    let page = flot::Page::new("GA");
     let p_fitness = page.plot("Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
     let p_value = page.plot("Iterations vs. Value").size(PLOT_WIDTH, PLOT_HEIGHT);
 
@@ -307,11 +205,11 @@ fn run_ga(function: &Function, dimensions: u32) {
                 population[parent1_index].mutate()
             };
 
-            child.fitness = function.calc(&make_vec(function.bounds(), dimensions, child.val));
+            child.fitness = function.calc(&make_vec(bounds, dimensions, child.val));
             let (_, new_index) = tournament(&population);
             std::mem::replace(&mut population[new_index], child);
 
-            let (best_value, lowest_fitness) = get_best(&population, function.bounds());
+            let (best_value, lowest_fitness) = get_best(&population, bounds);
             fitness_data.push((f64::from(iterations), lowest_fitness));
             value_data.push((f64::from(iterations), best_value));
         }
@@ -323,39 +221,143 @@ fn run_ga(function: &Function, dimensions: u32) {
     page.render("results/ga.html").expect("IO error");
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() < 2 {
-        eprintln!("Usage: coopco <function>");
-        std::process::exit(1);
-    }
-
-    let (function, dimensions): (Function, u32) = match args[1].as_str() {
-        "Sphere" => (Function::Sphere, 2),
-        "Rastrigin" => (Function::Rastrigin, 20),
-        "Schwefel" => (Function::Schwefel, 10),
-        "Griewangk" => (Function::Griewangk, 10),
-        "Ackley" => (Function::Ackley, 10),
-        "Rosenbrock" => (Function::Rosenbrock, 2),
-        "Easom" => (Function::Easom, 2),
-        "ThreeHump" => (Function::ThreeHump, 2),
-        "Matyas" => (Function::Matyas, 2),
-        "Schaffer2" => (Function::Schaffer2, 2),
-        "Levi13" => (Function::Levi13, 2),
-        "CrossInTray" => (Function::CrossInTray, 2),
-        "Booth" => (Function::Booth, 2),
-        "Eggholder" => (Function::Eggholder, 2),
-        "Beale" => (Function::Beale, 2),
-        _ => {
-            println!("Function has not been implemented...");
-            std::process::exit(1)
+macro_rules! function_factory {
+    ($([$element:ident, $bounds:expr, $dimensions:expr],)*) => (
+        enum Function {
+            $($element),*
         }
-    };
 
-    run_ga(&function, dimensions);
-    run_ccga(&function, dimensions);
+        impl Function {
+            fn bounds(&self) -> f64 {
+                match *self {
+                    $(Function::$element => $bounds),*
+                }
+            }
+
+            fn dimensions(&self) -> u32 {
+                match *self {
+                    $(Function::$element => $dimensions),*
+                }
+            }
+
+            fn calc(&self, vec: &[f64]) -> f64 {
+                let n = vec.len();
+                let x = vec[0];
+                let y = vec[1];
+
+                match *self {
+                    Function::Sphere => sum!(n, |i| sq!(vec[i])),
+                    Function::Beale => {
+                        sq!(1.5 - x + x * y) + sq!(2.25 - x + x * sq!(y)) + sq!(2.625 - x + x * y.powi(3))
+                    },
+                    Function::Schaffer2 => {
+                        0.5 + ((sq!(sin!(sq!(x) - sq!(y))) - 0.5) / sq!(1.0 + 0.001 * (sq!(x + sq!(y)))))
+                    },
+                    Function::Matyas => {
+                        0.26 * (sq!(x) + sq!(y)) - 0.48 * x * y
+                    },
+                    Function::ThreeHump => {
+                        2.0 * sq!(x) - 1.05 * x.powi(4) + (x.powi(6) / 6.0) + (x * y) + sq!(y)
+                    },
+                    Function::Easom => {
+                        - cos!(x) * cos!(y) * exp!(-(sq!(x - PI) + sq!(y - PI)))
+                    },
+                    Function::Rastrigin => {
+                        3.0 * (n as f64) + sum!(n, |i| sq!(vec[i]) - 3.0 * cos!(2.0 * PI * vec[i]))
+                    },
+                    Function::Schwefel => {
+                        418.982887 * (n as f64) - sum!(n, |i| vec[i] * sin!(sqrt!(abs!(vec[i]))))
+                    },
+                    Function::Griewangk => {
+                        1.0
+                            + sum!(n, |i| sq!(vec[i]) / 4000.0)
+                            - product!(n, |i| cos!(vec[i] / sqrt!(((i + 1) as f64))))
+                    },
+                    Function::Ackley => {
+                        20.0 + E
+                            - (20.0 * exp!(-0.2 * sqrt!(1.0 / (n as f64) * sum!(n, |i| sq!(vec[i])))))
+                            - exp!(1.0 / (n as f64) * sum!(n, |i| cos!(2.0 * PI * vec[i])))
+                    },
+                    Function::Rosenbrock => {
+                        100.0 * sq!(sq!(x) - y) + sq!(1.0 - x)
+                    },
+                    Function::Levi13 => {
+                        sq!(sin!(3.0 * PI * x))
+                            + sq!(x - 1.0) * (1.0 + sq!(sin!(3.0 * PI * y)))
+                            + sq!(y - 1.0) * (1.0 + sq!(sin!(2.0 * PI * y)))
+                    },
+                    Function::CrossInTray => {
+                        -0.0001 * (abs!(sin!(x) * sin!(y) * exp!(abs!(100.0 - sqrt!(sq!(x) + sq!(y)) / PI))) + 1.0).powf(0.1)
+                    },
+                    Function::Booth => {
+                        sq!(x + 2.0 * y - 7.0) + sq!(2.0 * x + y - 5.0)
+                    },
+                    Function::Eggholder => {
+                        - (y + 47.0) * sin!(sqrt!(abs!((x / 2.0) + y + 47.0))) - x * sin!(sqrt!(abs!(x - (y + 47.0))))
+                    },
+                    Function::HolderTable => {
+                        - abs!(sin!(x) * cos!(y) * exp!(abs!(1.0 - (sqrt!(sq!(x) + sq!(y)) / PI))))
+                    },
+                    Function::StyblinskiTang => {
+                        sum!(n, |i| vec[i].powi(4) - 16.0 * sq!(vec[i]) + 5.0 * vec[i]) / 2.0
+                    },
+                    Function::Schaffer4 => {
+                        0.5 + ((sq!(cos!(sin!(abs!(sq!(x) - sq!(y))))) - 0.5) / sq!(1.0 + 0.001 * (sq!(x + sq!(y)))))
+                    },
+                    Function::GoldsteinPrice => {
+                        (1.0 + sq!(x + y + 1.0) * (19.0 - 14.0*x + 3.0*sq!(x) - 14.0*y + 6.0*x*y + 3.0*sq!(y)))
+                        *
+                        (30.0 + sq!(2.0*x - 3.0*y) * (18.0 - 32.0*x + 12.0*sq!(x) + 48.0*y - 36.0*x*y + 27.0*sq!(y)))
+                    }
+                }
+            }
+        }
+
+        fn main() {
+            let args: Vec<String> = env::args().collect();
+
+            if args.len() < 2 {
+                eprintln!("Usage: coopco <function>");
+                std::process::exit(1);
+            }
+
+            let function = match args[1].as_str() {
+                $(stringify!($element) => Function::$element,)*
+                _ => {
+                    println!("Function has not been implemented...");
+                    println!("Implemented:");
+                    $(println!("\t{}", stringify!($element));)*
+                    std::process::exit(1)
+                }
+            };
+
+            run_ga(&function);
+            run_ccga(&function);
+        }
+    )
 }
+
+function_factory!(
+    [Rosenbrock, 2.048, 2],
+    [Beale, 4.5, 2],
+    [ThreeHump, 5.0, 2],
+    [Rastrigin, 5.12, 20],
+    [Matyas, 10.0, 2],
+    [Levi13, 10.0, 2],
+    [Booth, 10.0, 2],
+    [CrossInTray, 10.0, 2],
+    [HolderTable, 10.0, 2],
+    [Ackley, 30.0, 10],
+    [Schaffer2, 100.0, 2],
+    [Schaffer4, 100.0, 2],
+    [Easom, 100.0, 2],
+    [Sphere, 100.0, 2],
+    [Schwefel, 500.0, 10],
+    [Eggholder, 512.0, 2],
+    [Griewangk, 600.0, 10],
+    [StyblinskiTang, 5.0, 2],
+    [GoldsteinPrice, 2.0, 2],
+);
 
 #[cfg(test)]
 mod tests {
@@ -376,6 +378,7 @@ mod tests {
         assert_approx_eq!(0.0, ThreeHump.calc(&[0.0; 2]));
         assert_approx_eq!(0.0, Matyas.calc(&[0.0; 2]));
         assert_approx_eq!(0.0, Schaffer2.calc(&[0.0; 2]));
+        assert_approx_eq!(0.292579, Schaffer4.calc(&[0.0, 1.25313]), 1e-3f64);
         assert_approx_eq!(0.0, Levi13.calc(&[1.0; 2]));
         
         assert_approx_eq!(-2.06261, CrossInTray.calc(&[1.34941, 1.34941]), 1e-5f64);
@@ -386,6 +389,13 @@ mod tests {
         assert_approx_eq!(0.0, Booth.calc(&[1.0, 3.0]));
         assert_approx_eq!(-959.6407, Eggholder.calc(&[512.0, 404.2319]), 1e-4f64);
         assert_approx_eq!(0.0, Beale.calc(&[3.0, 0.5]));
+
+        assert_approx_eq!(-19.2085, HolderTable.calc(&[8.05502, 9.66459]), 1e-5f64);
+        assert_approx_eq!(-19.2085, HolderTable.calc(&[-8.05502, 9.66459]), 1e-5f64);
+        assert_approx_eq!(-19.2085, HolderTable.calc(&[8.05502, -9.66459]), 1e-5f64);
+        assert_approx_eq!(-19.2085, HolderTable.calc(&[-8.05502, -9.66459]), 1e-5f64);
+
+        assert_approx_eq!(3.0, GoldsteinPrice.calc(&[0.0, -1.0]));
 
         assert_approx_eq!(-2.0, real_val(5.0, u16::MAX/10*3), 1e-3f64);
     }
