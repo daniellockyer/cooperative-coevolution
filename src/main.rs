@@ -115,16 +115,14 @@ fn real_val(bounds: f64, value: u16) -> f64 {
 }
 
 fn make_vec_species(population: &[EvoPheno], child_val: &SmBitVec, child_pos: usize, bounds: f64) -> Vec<f64> {
-    let a = (0..population.len() / POPULATION_SIZE).map(|d| {
+    convert(&(0..population.len() / POPULATION_SIZE).map(|d| {
         if d == child_pos {
             child_val.clone()
         } else {
             let offset = d * POPULATION_SIZE;
             get_best(&population[offset.. offset + POPULATION_SIZE]).0
         }
-    }).collect();
-
-    convert(&a, bounds)
+    }).collect(), bounds)
 }
 
 fn make_population(size: usize, function: &Function, dimensions: u32) -> Vec<EvoPheno> {
@@ -143,17 +141,28 @@ fn make_population(size: usize, function: &Function, dimensions: u32) -> Vec<Evo
     }).collect()
 }
 
-fn get_best(population: &[EvoPheno]) -> (SmBitVec, f64) {
+fn lowest_fitness(population: &[EvoPheno]) -> f64 {
     let mut lowest_fitness = f64::MAX;
-    let mut best_value = BitVec::new();
 
     for p in population {
         if p.fitness < lowest_fitness {
             lowest_fitness = p.fitness;
-            best_value = p.val.clone();
         }
     }
-    (best_value, lowest_fitness)
+    lowest_fitness
+}
+
+fn get_best(population: &[EvoPheno]) -> (SmBitVec, f64) {
+    let mut lowest_fitness = f64::MAX;
+    let mut best_value_index = 0;
+
+    for (i, p) in population.iter().enumerate() {
+        if p.fitness < lowest_fitness {
+            lowest_fitness = p.fitness;
+            best_value_index = i;
+        }
+    }
+    (population[best_value_index].val.clone(), lowest_fitness)
 }
 
 fn make_vec(bv: &SmBitVec, bounds: f64) -> Vec<f64> {
@@ -181,6 +190,7 @@ fn convert(r: &Vec<SmBitVec>, bounds: f64) -> Vec<f64> {
 fn run_ga(function: &Function) {
     let crossover = true;
     let dimensions = function.dimensions();
+    let function_min = function.known_min();
     let bounds = function.bounds();
     let page = flot::Page::new("GA / CCGA");
     let p_fitness_ga = page.plot("GA Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
@@ -204,7 +214,7 @@ fn run_ga(function: &Function) {
             let new_index = tournament(&population, 0).1;
             std::mem::replace(&mut population[new_index], child);
 
-            fitness_data.push((f64::from(iterations), get_best(&population).1));
+            fitness_data.push((f64::from(iterations), lowest_fitness(&population) - function_min));
         }
         p_fitness_ga.lines("", fitness_data).line_width(1);
     }
@@ -230,11 +240,10 @@ fn run_ga(function: &Function) {
                 std::mem::replace(&mut population[new_index], child);
             }
 
-            let mut test_vec: Vec<SmBitVec> = (0..dimensions).map(|d| {
+            fitness_data.push((f64::from(iterations), function.calc(&convert(&(0..dimensions).map(|d| {
                 let offset = (d as usize) * POPULATION_SIZE;
                 get_best(&population[offset..offset + POPULATION_SIZE]).0
-            }).collect();
-            fitness_data.push((f64::from(iterations), function.calc(&convert(&test_vec, bounds))));
+            }).collect(), bounds)) - function_min));
         }
         p_fitness_ccga.lines("", fitness_data).line_width(1);
     }
@@ -243,7 +252,7 @@ fn run_ga(function: &Function) {
 }
 
 macro_rules! function_factory {
-    ($([$element:ident, $bounds:expr, $dimensions:expr],)*) => (
+    ($([$element:ident, $bounds:expr, $dimensions:expr, $knownmin:expr],)*) => (
         enum Function {
             $($element),*
         }
@@ -258,6 +267,12 @@ macro_rules! function_factory {
             fn dimensions(&self) -> u32 {
                 match *self {
                     $(Function::$element => $dimensions),*
+                }
+            }
+
+            fn known_min(&self) -> f64 {
+                match *self {
+                    $(Function::$element => $knownmin),*
                 }
             }
 
@@ -329,25 +344,25 @@ macro_rules! function_factory {
 }
 
 function_factory!(
-    [Rosenbrock, 2.048, 2],
-    [Beale, 4.5, 2],
-    [ThreeHump, 5.0, 2],
-    [Rastrigin, 5.12, 20],
-    [Matyas, 10.0, 2],
-    [Levi13, 10.0, 2],
-    [Booth, 10.0, 2],
-    [CrossInTray, 10.0, 2],
-    [HolderTable, 10.0, 2],
-    [Ackley, 30.0, 10],
-    [Schaffer2, 100.0, 2],
-    [Schaffer4, 100.0, 2],
-    [Easom, 100.0, 2],
-    [Sphere, 100.0, 2],
-    [Schwefel, 500.0, 10],
-    [Eggholder, 512.0, 2],
-    [Griewangk, 600.0, 10],
-    [StyblinskiTang, 5.0, 2],
-    [GoldsteinPrice, 2.0, 2],
+    [Rosenbrock, 2.048, 2, 0.0],
+    [Beale, 4.5, 2, 0.0],
+    [ThreeHump, 5.0, 2, 0.0],
+    [Rastrigin, 5.12, 20, 0.0],
+    [Matyas, 10.0, 2, 0.0],
+    [Levi13, 10.0, 2, 0.0],
+    [Booth, 10.0, 2, 0.0],
+    [CrossInTray, 10.0, 2, -2.06261],
+    [HolderTable, 10.0, 2, -19.2085],
+    [Ackley, 30.0, 10, 0.0],
+    [Schaffer2, 100.0, 2, 0.0],
+    [Schaffer4, 100.0, 2, 0.292579],
+    [Easom, 100.0, 2, -1.0],
+    [Sphere, 100.0, 2, 0.0],
+    [Schwefel, 500.0, 10, 420.968746],
+    [Eggholder, 512.0, 2, -959.6407],
+    [Griewangk, 600.0, 10, 0.0],
+    [StyblinskiTang, 5.0, 2, -2.903534], // An odd one
+    [GoldsteinPrice, 2.0, 2, 3.0],
 );
 
 #[cfg(test)]
