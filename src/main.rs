@@ -47,7 +47,7 @@ impl EvoPheno {
             bv.set(i, j_value == 1);
         }
 
-        EvoPheno::new(bv)   
+        EvoPheno::new(bv)
     }
 
     fn crossover(&self, other: &EvoPheno) -> EvoPheno {
@@ -273,24 +273,18 @@ macro_rules! function_factory {
                     Function::Booth => sq!(x + 2.0 * y - 7.0) + sq!(2.0 * x + y - 5.0),
                     Function::Easom => - cos!(x) * cos!(y) * exp!(-(sq!(x - PI) + sq!(y - PI))),
                     Function::Schwefel => 418.982887 * (n as f64) - sum!(n, |i| vec[i] * sin!(sqrt!(abs!(vec[i])))),
-                    Function::Beale => {
-                        sq!(1.5 - x + x * y) + sq!(2.25 - x + x * sq!(y)) + sq!(2.625 - x + x * y.powi(3))
-                    },
-                    Function::Schaffer2 => {
-                        0.5 + ((sq!(sin!(sq!(x) - sq!(y))) - 0.5) / sq!(1.0 + 0.001 * (sq!(x + sq!(y)))))
-                    },
-                    Function::ThreeHump => {
-                        2.0 * sq!(x) - 1.05 * x.powi(4) + (x.powi(6) / 6.0) + (x * y) + sq!(y)
-                    },
-                    Function::Rastrigin => {
-                        3.0 * (n as f64) + sum!(n, |i| sq!(vec[i]) - 3.0 * cos!(2.0 * PI * vec[i]))
-                    },
+                    Function::StyblinskiTang => sum!(n, |i| vec[i].powi(4) - 16.0 * sq!(vec[i]) + 5.0 * vec[i]) / 2.0,
+                    Function::ThreeHump => 2.0 * sq!(x) - 1.05 * x.powi(4) + (x.powi(6) / 6.0) + (x * y) + sq!(y),
+                    Function::Beale => sq!(1.5 - x + x * y) + sq!(2.25 - x + x * sq!(y)) + sq!(2.625 - x + x * y.powi(3)),
+                    Function::HolderTable => - abs!(sin!(x) * cos!(y) * exp!(abs!(1.0 - (sqrt!(sq!(x) + sq!(y)) / PI)))),
+                    Function::Schaffer4 => 0.5 + ((sq!(cos!(sin!(abs!(sq!(x) - sq!(y))))) - 0.5) / sq!(1.0 + 0.001 * (sq!(x + sq!(y))))),
+                    Function::Schaffer2 => 0.5 + ((sq!(sin!(sq!(x) - sq!(y))) - 0.5) / sq!(1.0 + 0.001 * (sq!(x + sq!(y))))),
+                    Function::Rastrigin => 3.0 * (n as f64) + sum!(n, |i| sq!(vec[i]) - 3.0 * cos!(2.0 * PI * vec[i])),
                     Function::Griewangk => {
                         1.0 + sum!(n, |i| sq!(vec[i]) / 4000.0) - product!(n, |i| cos!(vec[i] / sqrt!(((i + 1) as f64))))
                     },
                     Function::Ackley => {
-                        20.0 + E
-                            - (20.0 * exp!(-0.2 * sqrt!(1.0 / (n as f64) * sum!(n, |i| sq!(vec[i])))))
+                        20.0 + E - (20.0 * exp!(-0.2 * sqrt!(1.0 / (n as f64) * sum!(n, |i| sq!(vec[i])))))
                             - exp!(1.0 / (n as f64) * sum!(n, |i| cos!(2.0 * PI * vec[i])))
                     },
                     Function::Levi13 => {
@@ -301,15 +295,6 @@ macro_rules! function_factory {
                     },
                     Function::Eggholder => {
                         - (y + 47.0) * sin!(sqrt!(abs!((x / 2.0) + y + 47.0))) - x * sin!(sqrt!(abs!(x - (y + 47.0))))
-                    },
-                    Function::HolderTable => {
-                        - abs!(sin!(x) * cos!(y) * exp!(abs!(1.0 - (sqrt!(sq!(x) + sq!(y)) / PI))))
-                    },
-                    Function::StyblinskiTang => {
-                        sum!(n, |i| vec[i].powi(4) - 16.0 * sq!(vec[i]) + 5.0 * vec[i]) / 2.0
-                    },
-                    Function::Schaffer4 => {
-                        0.5 + ((sq!(cos!(sin!(abs!(sq!(x) - sq!(y))))) - 0.5) / sq!(1.0 + 0.001 * (sq!(x + sq!(y)))))
                     },
                     Function::GoldsteinPrice => {
                         (1.0 + sq!(x + y + 1.0) * (19.0 - 14.0*x + 3.0*sq!(x) - 14.0*y + 6.0*x*y + 3.0*sq!(y)))
@@ -333,7 +318,7 @@ macro_rules! function_factory {
                 _ => {
                     println!("Function has not been implemented...");
                     println!("Implemented:");
-                    $(println!("\t{}", stringify!($element));)*
+                    $(println!("  {}", stringify!($element));)*
                     std::process::exit(1)
                 }
             };
