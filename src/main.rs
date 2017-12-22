@@ -17,6 +17,7 @@ macro_rules! abs { ($a: expr) => ($a.abs()) }
 macro_rules! sq { ($a: expr) => ($a * $a) }
 macro_rules! sum { ($n: expr, $a: expr) => ((0 .. $n).map($a).fold(0.0, |a, b| a + b)) }
 macro_rules! product { ($n: expr, $a: expr) => ((0 .. $n).map($a).fold(1.0, |a, b| a * b)) }
+macro_rules! mapc { ($n: expr, $body: expr) => ((0 .. $n).map($body).collect()) }
 
 const TARGET_LEN: usize = 16;
 const POPULATION_SIZE: usize = 100;
@@ -39,7 +40,7 @@ impl EvoPheno {
         }
     }
 
-    fn new_from_vec(t: Vec<u16>) -> EvoPheno {
+    fn new_from_vec(t: &Vec<u16>) -> EvoPheno {
         let mut bv: SmBitVec = BitVec::from_elem(TARGET_LEN * t.len(), false);
 
         for i in 0..bv.len() {
@@ -64,9 +65,10 @@ impl EvoPheno {
 
     fn multi_crossover(&self, other: &EvoPheno) -> EvoPheno {
         let mut new = self.val.clone();
+        let len = self.val.len();
         let (low, high) = {
-            let a = thread_rng().gen_range(0, self.val.len());
-            let b = thread_rng().gen_range(0, self.val.len());
+            let a = thread_rng().gen_range(0, len);
+            let b = thread_rng().gen_range(0, len);
 
             if a < b {
                 (a, b)
@@ -110,145 +112,172 @@ fn tournament(population: &[EvoPheno], offset: usize) -> (usize, usize) {
     }
 }
 
+fn fitness_selection(population: &[EvoPheno]) -> usize {
+    let total_fitness = sum!(population.len(), |i| population[i].fitness);
+    let mut s = population.to_vec();
+    s.sort_by(|a: &EvoPheno, b: &EvoPheno| a.fitness.partial_cmp(&b.fitness).unwrap());
+    let random_number = thread_rng().gen_range(0.0, total_fitness);
+
+    let mut sum = 0.0;
+
+    for (i, item) in s.iter().enumerate() {
+        sum += item.fitness;
+
+        if sum > random_number {
+            return i;
+        }
+    }
+
+    unreachable!();
+}
+
 fn real_val(bounds: f64, value: u16) -> f64 {
     -bounds + (f64::from(value) / f64::from(u16::MAX) * bounds * 2.0)
 }
 
-fn make_vec_species(population: &[EvoPheno], child_val: &SmBitVec, child_pos: usize, bounds: f64) -> Vec<f64> {
-    convert(&(0..population.len() / POPULATION_SIZE).map(|d| {
+fn make_vec_species(population: &[EvoPheno], child_val: &SmBitVec, child_pos: usize, bounds: f64, top: bool) -> Vec<f64> {
+    convert(&mapc!(population.len() / POPULATION_SIZE, |d| {
         if d == child_pos {
-            child_val.clone()
+            child_val
         } else {
-            let offset = d * POPULATION_SIZE;
-            get_best(&population[offset.. offset + POPULATION_SIZE]).0
+            let offset = (d as usize) * POPULATION_SIZE;
+            if top {
+                &get_best(&population[offset..offset + POPULATION_SIZE]).val
+            } else {
+                &population[thread_rng().gen_range(offset, offset + POPULATION_SIZE)].val
+            }
         }
-    }).collect(), bounds)
+    }), bounds)
 }
 
 fn make_population(size: usize, function: &Function, dimensions: u32) -> Vec<EvoPheno> {
-    (0..size).map(|_| {
-        let mut p = EvoPheno::new_from_vec((0..dimensions).map(|_| thread_rng().gen::<u16>()).collect());
-        p.fitness = if dimensions != function.dimensions() {
-            let mut input = Vec::new();
-            for _ in 0..function.dimensions() {
-                input.push(p.val.clone());
-            }
-            function.calc(&convert(&input, function.bounds()))
+    let bounds = function.bounds();
+    let func_dimensions = function.dimensions();
+
+    let mut population: Vec<EvoPheno> = mapc!(size, |_|
+        EvoPheno::new_from_vec(&mapc!(dimensions, |_| thread_rng().gen::<u16>()))
+    );
+
+    let pop2 = population.clone();
+
+    for p in &mut population {
+        p.fitness = if dimensions == func_dimensions {
+            function.calc(&make_vec(&p.val, bounds))
         } else {
-            function.calc(&make_vec(&p.val, function.bounds()))
+            function.calc(&convert(&mapc!(func_dimensions, |d| {
+                let offset = (d as usize) * POPULATION_SIZE;
+                &pop2[thread_rng().gen_range(offset, offset + POPULATION_SIZE)].val
+            }), bounds))
         };
-        p
-    }).collect()
+    }
+
+    population
 }
 
-fn lowest_fitness(population: &[EvoPheno]) -> f64 {
-    let mut lowest_fitness = f64::MAX;
-
-    for p in population {
-        if p.fitness < lowest_fitness {
-            lowest_fitness = p.fitness;
-        }
-    }
-    lowest_fitness
-}
-
-fn get_best(population: &[EvoPheno]) -> (SmBitVec, f64) {
-    let mut lowest_fitness = f64::MAX;
-    let mut best_value_index = 0;
-
-    for (i, p) in population.iter().enumerate() {
-        if p.fitness < lowest_fitness {
-            lowest_fitness = p.fitness;
-            best_value_index = i;
-        }
-    }
-    (population[best_value_index].val.clone(), lowest_fitness)
+fn get_best(population: &[EvoPheno]) -> &EvoPheno {
+    population
+        .iter()
+        .min_by(|a: &&EvoPheno, b: &&EvoPheno| a.fitness.partial_cmp(&b.fitness).unwrap())
+        .unwrap()
 }
 
 fn make_vec(bv: &SmBitVec, bounds: f64) -> Vec<f64> {
     let mut a = Vec::new();
-
     for i in bv.blocks() {
         a.push(real_val(bounds, i));
     }
-
     a
 }
 
-fn convert(r: &Vec<SmBitVec>, bounds: f64) -> Vec<f64> {
+fn convert(r: &Vec<&SmBitVec>, bounds: f64) -> Vec<f64> {
     let mut a = Vec::new();
-
     for j in r {
-        for i in j.blocks() {
-            a.push(real_val(bounds, i));
-        }
+        a.extend(make_vec(j, bounds));
     }
-
     a
 }
 
 fn run_ga(function: &Function) {
-    let crossover = true;
     let dimensions = function.dimensions();
     let function_min = function.known_min();
     let bounds = function.bounds();
-    let page = flot::Page::new("GA / CCGA");
+    let page = flot::Page::new("GA / CCGA1 / CCGA2");
     let p_fitness_ga = page.plot("GA Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
-    let p_fitness_ccga = page.plot("CCGA Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
+    let p_fitness_ccga1 = page.plot("CCGA1 Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
+    //let p_fitness_ccga2 = page.plot("CCGA2 Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
+    //let p_fitness_both = page.plot("GA/CCGA1 Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
 
     for _ in 0..50 {
-        let mut fitness_data = Vec::new();
         let mut population = make_population(POPULATION_SIZE, function, dimensions);
 
-        for iterations in 0..1000 {
-            let (parent1_index, _) = tournament(&population, 0);
+        let fitness_data: Vec<(f64, f64)> = mapc!(1000, |iterations| {
+            let parent1_index = tournament(&population, 0).0;
+            let parent2_index = tournament(&population, 0).0;
 
-            let mut child = if crossover {
-                let (parent2_index, _) = tournament(&population, 0);
-                population[parent1_index].multi_crossover(&population[parent2_index]).mutate()
-            } else {
-                population[parent1_index].mutate()
-            };
-
+            let mut child = population[parent1_index].multi_crossover(&population[parent2_index]).mutate();
             child.fitness = function.calc(&make_vec(&child.val, bounds));
+
             let new_index = tournament(&population, 0).1;
             std::mem::replace(&mut population[new_index], child);
 
-            fitness_data.push((f64::from(iterations), lowest_fitness(&population) - function_min));
-        }
+            (f64::from(iterations), (get_best(&population).fitness - function_min).abs())
+        });
         p_fitness_ga.lines("", fitness_data).line_width(1);
     }
 
     for _ in 0..50 {
-        let mut fitness_data = Vec::new();
-        let mut population = make_population((dimensions as usize) * POPULATION_SIZE, function, 1);
+        let mut population = make_population(POPULATION_SIZE * (dimensions as usize), function, 1);
 
-        for iterations in 0..1000 {
+        let fitness_data: Vec<(f64, f64)> = mapc!(1000, |iterations| {
             for d in 0..dimensions {
                 let offset = (d as usize) * POPULATION_SIZE;
                 let parent1_index = offset + tournament(&population, offset).0;
+                let parent2_index = offset + tournament(&population, offset).0;
 
-                let mut child = if crossover {
-                    let parent2_index = offset + tournament(&population, offset).0;
-                    population[parent1_index].multi_crossover(&population[parent2_index]).mutate()
-                } else {
-                    population[parent1_index].mutate()
-                };
+                let mut child = population[parent1_index].multi_crossover(&population[parent2_index]).mutate();
+                child.fitness = function.calc(&make_vec_species(&population, &child.val, d as usize, bounds, true));
 
-                child.fitness = function.calc(&make_vec_species(&population, &child.val, d as usize, bounds));
                 let new_index = offset + tournament(&population, offset).1;
                 std::mem::replace(&mut population[new_index], child);
             }
 
-            fitness_data.push((f64::from(iterations), function.calc(&convert(&(0..dimensions).map(|d| {
+            (f64::from(iterations), (function.calc(&convert(&mapc!(dimensions, |d| {
                 let offset = (d as usize) * POPULATION_SIZE;
-                get_best(&population[offset..offset + POPULATION_SIZE]).0
-            }).collect(), bounds)) - function_min));
-        }
-        p_fitness_ccga.lines("", fitness_data).line_width(1);
+                &get_best(&population[offset..offset + POPULATION_SIZE]).val
+            }), bounds)) - function_min).abs())
+
+        });
+        p_fitness_ccga1.lines("", fitness_data).line_width(1);
     }
 
-    page.render("results/ga.html").expect("IO error");
+    /*for _ in 0..50 {
+        let mut population = make_population(POPULATION_SIZE * (dimensions as usize), function, 1);
+
+        let fitness_data: Vec<(f64, f64)> = mapc!(1000, |iterations| {
+            for d in 0..dimensions {
+                let offset = (d as usize) * POPULATION_SIZE;
+                let parent1_index = offset + tournament(&population, offset).0;
+                let parent2_index = offset + tournament(&population, offset).0;
+
+                let mut child = population[parent1_index].multi_crossover(&population[parent2_index]).mutate();
+                let top_best_fitness = function.calc(&make_vec_species(&population, &child.val, d as usize, bounds, true));
+                let random_fitness = function.calc(&make_vec_species(&population, &child.val, d as usize, bounds, false));
+                child.fitness = top_best_fitness.min(random_fitness);
+
+                let new_index = offset + tournament(&population, offset).1;
+                std::mem::replace(&mut population[new_index], child);
+            }
+
+           (f64::from(iterations), (function.calc(&convert(&mapc!(dimensions, |d| {
+                let offset = (d as usize) * POPULATION_SIZE;
+                &get_best(&population[offset..offset + POPULATION_SIZE]).val
+            }), bounds)) - function_min).abs())
+
+        });
+        p_fitness_ccga2.lines("", fitness_data).line_width(1);
+    }*/
+
+    page.render("ga.html").expect("IO error");
 }
 
 macro_rules! function_factory {
@@ -331,9 +360,8 @@ macro_rules! function_factory {
             let function = match args[1].as_str() {
                 $(stringify!($element) => Function::$element,)*
                 _ => {
-                    println!("Function has not been implemented...");
-                    println!("Implemented:");
-                    $(println!("  {}", stringify!($element));)*
+                    println!("Function has not been implemented...\nImplemented:");
+                    $(println!("  - {}", stringify!($element));)*
                     std::process::exit(1)
                 }
             };
@@ -345,22 +373,23 @@ macro_rules! function_factory {
 
 function_factory!(
     [Rosenbrock, 2.048, 2, 0.0],
+    [Griewangk, 600.0, 10, 0.0],
+    [Schwefel, 500.0, 10, 0.0],
+    [Rastrigin, 5.12, 20, 0.0],
+    [Ackley, 30.0, 10, 0.0],
+
     [Beale, 4.5, 2, 0.0],
     [ThreeHump, 5.0, 2, 0.0],
-    [Rastrigin, 5.12, 20, 0.0],
     [Matyas, 10.0, 2, 0.0],
     [Levi13, 10.0, 2, 0.0],
     [Booth, 10.0, 2, 0.0],
     [CrossInTray, 10.0, 2, -2.06261],
     [HolderTable, 10.0, 2, -19.2085],
-    [Ackley, 30.0, 10, 0.0],
     [Schaffer2, 100.0, 2, 0.0],
     [Schaffer4, 100.0, 2, 0.292579],
     [Easom, 100.0, 2, -1.0],
     [Sphere, 100.0, 2, 0.0],
-    [Schwefel, 500.0, 10, 420.968746],
     [Eggholder, 512.0, 2, -959.6407],
-    [Griewangk, 600.0, 10, 0.0],
     [StyblinskiTang, 5.0, 2, -2.903534], // An odd one
     [GoldsteinPrice, 2.0, 2, 3.0],
 );
