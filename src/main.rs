@@ -2,12 +2,13 @@
 #[cfg(test)] #[macro_use] extern crate assert_approx_eq;
 extern crate bit_vec;
 extern crate rand;
-extern crate flot;
 
 use bit_vec::BitVec;
-use rand::{thread_rng, Rng};
-use std::{env, u16, f64};
+use rand::{Rng, weak_rng};
+use std::{env, u16, f64, usize};
 use std::f64::consts::{PI, E};
+use std::fs::File;
+use std::io::Write;
 
 macro_rules! exp { ($a: expr) => ($a.exp()) }
 macro_rules! sqrt { ($a: expr) => ($a.sqrt()) }
@@ -21,8 +22,7 @@ macro_rules! mapc { ($n: expr, $body: expr) => ((0 .. $n).map($body).collect()) 
 
 const TARGET_LEN: usize = 16;
 const POPULATION_SIZE: usize = 100;
-const PLOT_WIDTH: u32 = 1024;
-const PLOT_HEIGHT: u32 = 300;
+const ITERATIONS: u32 = 1000;
 
 type SmBitVec = BitVec<u16>;
 
@@ -53,9 +53,10 @@ impl EvoPheno {
 
     fn crossover(&self, other: &EvoPheno) -> EvoPheno {
         let mut new = self.val.clone();
+        let mut rand = weak_rng();
 
         for i in 0..self.val.len() {
-            if rand::random::<f64>() < 0.6 {
+            if rand.next_f64() < 0.6 {
                 new.set(i, other.val[i]);
             }
         }
@@ -67,8 +68,8 @@ impl EvoPheno {
         let mut new = self.val.clone();
         let len = self.val.len();
         let (low, high) = {
-            let a = thread_rng().gen_range(0, len);
-            let b = thread_rng().gen_range(0, len);
+            let a = weak_rng().gen_range(0, len);
+            let b = weak_rng().gen_range(0, len);
 
             if a < b {
                 (a, b)
@@ -88,9 +89,26 @@ impl EvoPheno {
 
     fn mutate(&self) -> EvoPheno {
         let mut new = self.val.clone();
+        let mut rand = weak_rng();
 
         for i in 0..self.val.len() {
-            if rand::random::<f64>() < (1f64 / self.val.len() as f64) {
+            if rand.next_f64() < (1f64 / self.val.len() as f64) {
+                new.set(i, !self.val[i]);
+            }
+        }
+
+        EvoPheno::new(new)
+   }
+
+    fn clever_mutate(&self, iteration: u32) -> EvoPheno {
+        let mut new = self.val.clone();
+        let mut rand = weak_rng();
+        let len = self.val.len();
+
+        for i in 0..len {
+            let prob = 0.1 * (cos!(PI * (i / len) as f64 - PI * (iteration / ITERATIONS) as f64)) + 0.7;
+
+            if rand.next_f64() < prob {
                 new.set(i, !self.val[i]);
             }
         }
@@ -102,8 +120,8 @@ impl EvoPheno {
 fn tournament(population: &[EvoPheno], offset: usize) -> (usize, usize) {
     let pop_slice = &population[offset..offset + POPULATION_SIZE];
 
-    let a_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
-    let b_index = thread_rng().gen_range(0, POPULATION_SIZE) as usize;
+    let a_index = weak_rng().gen_range(0, POPULATION_SIZE) as usize;
+    let b_index = weak_rng().gen_range(0, POPULATION_SIZE) as usize;
 
     if pop_slice[a_index].fitness < pop_slice[b_index].fitness {
         (a_index, b_index)
@@ -112,12 +130,13 @@ fn tournament(population: &[EvoPheno], offset: usize) -> (usize, usize) {
     }
 }
 
-fn fitness_selection(population: &[EvoPheno]) -> usize {
-    let total_fitness = sum!(population.len(), |i| population[i].fitness);
-    let mut s = population.to_vec();
+fn fitness_selection(population: &[EvoPheno], offset: usize) -> usize {
+    let mut s = population[offset..offset + POPULATION_SIZE].to_vec();
+    let total_fitness = sum!(s.len(), |i| s[i].fitness);
     s.sort_by(|a: &EvoPheno, b: &EvoPheno| a.fitness.partial_cmp(&b.fitness).unwrap());
-    let random_number = thread_rng().gen_range(0.0, total_fitness);
+    s.reverse();
 
+    let random_number = weak_rng().gen_range(0.0, total_fitness);
     let mut sum = 0.0;
 
     for (i, item) in s.iter().enumerate() {
@@ -136,6 +155,7 @@ fn real_val(bounds: f64, value: u16) -> f64 {
 }
 
 fn make_vec_species(population: &[EvoPheno], child_val: &SmBitVec, child_pos: usize, bounds: f64, top: bool) -> Vec<f64> {
+    let mut rand = weak_rng();
     convert(&mapc!(population.len() / POPULATION_SIZE, |d| {
         if d == child_pos {
             child_val
@@ -144,7 +164,7 @@ fn make_vec_species(population: &[EvoPheno], child_val: &SmBitVec, child_pos: us
             if top {
                 &get_best(&population[offset..offset + POPULATION_SIZE]).val
             } else {
-                &population[thread_rng().gen_range(offset, offset + POPULATION_SIZE)].val
+                &population[rand.gen_range(offset, offset + POPULATION_SIZE)].val
             }
         }
     }), bounds)
@@ -153,9 +173,10 @@ fn make_vec_species(population: &[EvoPheno], child_val: &SmBitVec, child_pos: us
 fn make_population(size: usize, function: &Function, dimensions: u32) -> Vec<EvoPheno> {
     let bounds = function.bounds();
     let func_dimensions = function.dimensions();
+    let mut rand = weak_rng();
 
     let mut population: Vec<EvoPheno> = mapc!(size, |_|
-        EvoPheno::new_from_vec(&mapc!(dimensions, |_| thread_rng().gen::<u16>()))
+        EvoPheno::new_from_vec(&mapc!(dimensions, |_| rand.gen::<u16>()))
     );
 
     let pop2 = population.clone();
@@ -166,7 +187,7 @@ fn make_population(size: usize, function: &Function, dimensions: u32) -> Vec<Evo
         } else {
             function.calc(&convert(&mapc!(func_dimensions, |d| {
                 let offset = (d as usize) * POPULATION_SIZE;
-                &pop2[thread_rng().gen_range(offset, offset + POPULATION_SIZE)].val
+                &pop2[rand.gen_range(offset, offset + POPULATION_SIZE)].val
             }), bounds))
         };
     }
@@ -201,59 +222,96 @@ fn run_ga(function: &Function) {
     let dimensions = function.dimensions();
     let function_min = function.known_min();
     let bounds = function.bounds();
-    let page = flot::Page::new("GA / CCGA1 / CCGA2");
-    let p_fitness_ga = page.plot("GA Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
-    let p_fitness_ccga1 = page.plot("CCGA1 Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
-    //let p_fitness_ccga2 = page.plot("CCGA2 Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
-    //let p_fitness_both = page.plot("GA/CCGA1 Iterations vs. Fitness").size(PLOT_WIDTH, PLOT_HEIGHT);
 
+    let mut ga_file = File::create("ga.csv").unwrap();
+    let mut ccga1_file = File::create("ccga1.csv").unwrap();
+    let mut ccga1_clever_file = File::create("ccga1_clever.csv").unwrap();
+
+    println!("GA");
     for _ in 0..50 {
         let mut population = make_population(POPULATION_SIZE, function, dimensions);
 
-        let fitness_data: Vec<(f64, f64)> = mapc!(1000, |iterations| {
-            let parent1_index = tournament(&population, 0).0;
-            let parent2_index = tournament(&population, 0).0;
+        let fitness_data: Vec<f64> = mapc!(ITERATIONS, |iterations| {
+            let parent1_index = fitness_selection(&population, 0);
+            let parent2_index = fitness_selection(&population, 0);
+            //let parent1_index = tournament(&population, 0).0;
+            //let parent2_index = tournament(&population, 0).0;
 
             let mut child = population[parent1_index].multi_crossover(&population[parent2_index]).mutate();
             child.fitness = function.calc(&make_vec(&child.val, bounds));
 
             let new_index = tournament(&population, 0).1;
+            //let new_index = fitness_selection(&population, 0);
             std::mem::replace(&mut population[new_index], child);
 
-            (f64::from(iterations), (get_best(&population).fitness - function_min).abs())
+            (get_best(&population).fitness - function_min).abs()
         });
-        p_fitness_ga.lines("", fitness_data).line_width(1);
+        let output: Vec<String> = fitness_data.iter().map(|n| n.to_string()).collect();
+        writeln!(ga_file, "{}", output.join(",")).unwrap();
     }
 
+    println!("CCGA1");
     for _ in 0..50 {
         let mut population = make_population(POPULATION_SIZE * (dimensions as usize), function, 1);
 
-        let fitness_data: Vec<(f64, f64)> = mapc!(1000, |iterations| {
+        let fitness_data: Vec<f64> = mapc!(ITERATIONS, |iterations| {
             for d in 0..dimensions {
                 let offset = (d as usize) * POPULATION_SIZE;
-                let parent1_index = offset + tournament(&population, offset).0;
-                let parent2_index = offset + tournament(&population, offset).0;
+                //let parent1_index = offset + tournament(&population, offset).0;
+                //let parent2_index = offset + tournament(&population, offset).0;
+                let parent1_index = offset + fitness_selection(&population, offset);
+                let parent2_index = offset + fitness_selection(&population, offset);
 
                 let mut child = population[parent1_index].multi_crossover(&population[parent2_index]).mutate();
                 child.fitness = function.calc(&make_vec_species(&population, &child.val, d as usize, bounds, true));
 
-                let new_index = offset + tournament(&population, offset).1;
+                //let new_index = offset + tournament(&population, offset).1;
+                let new_index = offset + fitness_selection(&population, offset);
                 std::mem::replace(&mut population[new_index], child);
             }
 
-            (f64::from(iterations), (function.calc(&convert(&mapc!(dimensions, |d| {
+            (function.calc(&convert(&mapc!(dimensions, |d| {
                 let offset = (d as usize) * POPULATION_SIZE;
                 &get_best(&population[offset..offset + POPULATION_SIZE]).val
-            }), bounds)) - function_min).abs())
-
+            }), bounds)) - function_min).abs()
         });
-        p_fitness_ccga1.lines("", fitness_data).line_width(1);
+        let output: Vec<String> = fitness_data.iter().map(|n| n.to_string()).collect();
+        writeln!(ccga1_file, "{}", output.join(",")).unwrap();
+    }
+
+    println!("CCGA1 Clever");
+    for _ in 0..50 {
+        let mut population = make_population(POPULATION_SIZE * (dimensions as usize), function, 1);
+
+        let fitness_data: Vec<f64> = mapc!(ITERATIONS, |iterations| {
+            for d in 0..dimensions {
+                let offset = (d as usize) * POPULATION_SIZE;
+                //let parent1_index = offset + tournament(&population, offset).0;
+                //let parent2_index = offset + tournament(&population, offset).0;
+                let parent1_index = offset + fitness_selection(&population, offset);
+                let parent2_index = offset + fitness_selection(&population, offset);
+
+                let mut child = population[parent1_index].multi_crossover(&population[parent2_index]).clever_mutate(iterations);
+                child.fitness = function.calc(&make_vec_species(&population, &child.val, d as usize, bounds, true));
+
+                //let new_index = offset + tournament(&population, offset).1;
+                let new_index = offset + fitness_selection(&population, offset);
+                std::mem::replace(&mut population[new_index], child);
+            }
+
+            (function.calc(&convert(&mapc!(dimensions, |d| {
+                let offset = (d as usize) * POPULATION_SIZE;
+                &get_best(&population[offset..offset + POPULATION_SIZE]).val
+            }), bounds)) - function_min).abs()
+        });
+        let output: Vec<String> = fitness_data.iter().map(|n| n.to_string()).collect();
+        writeln!(ccga1_clever_file, "{}", output.join(",")).unwrap();
     }
 
     /*for _ in 0..50 {
         let mut population = make_population(POPULATION_SIZE * (dimensions as usize), function, 1);
 
-        let fitness_data: Vec<(f64, f64)> = mapc!(1000, |iterations| {
+        let fitness_data: Vec<(f64, f64)> = mapc!(ITERATIONS, |iterations| {
             for d in 0..dimensions {
                 let offset = (d as usize) * POPULATION_SIZE;
                 let parent1_index = offset + tournament(&population, offset).0;
@@ -276,8 +334,6 @@ fn run_ga(function: &Function) {
         });
         p_fitness_ccga2.lines("", fitness_data).line_width(1);
     }*/
-
-    page.render("ga.html").expect("IO error");
 }
 
 macro_rules! function_factory {
@@ -324,21 +380,12 @@ macro_rules! function_factory {
                     Function::Schaffer4 => 0.5 + ((sq!(cos!(sin!(abs!(sq!(x) - sq!(y))))) - 0.5) / sq!(1.0 + 0.001 * (sq!(x + sq!(y))))),
                     Function::Schaffer2 => 0.5 + ((sq!(sin!(sq!(x) - sq!(y))) - 0.5) / sq!(1.0 + 0.001 * (sq!(x + sq!(y))))),
                     Function::Rastrigin => 3.0 * (n as f64) + sum!(n, |i| sq!(vec[i]) - 3.0 * cos!(2.0 * PI * vec[i])),
-                    Function::Griewangk => {
-                        1.0 + sum!(n, |i| sq!(vec[i]) / 4000.0) - product!(n, |i| cos!(vec[i] / sqrt!(((i + 1) as f64))))
-                    },
+                    Function::Eggholder => - (y + 47.0) * sin!(sqrt!(abs!((x / 2.0) + y + 47.0))) - x * sin!(sqrt!(abs!(x - (y + 47.0)))),
+                    Function::CrossInTray => - 0.0001 * (abs!(sin!(x) * sin!(y) * exp!(abs!(100.0 - sqrt!(sq!(x) + sq!(y)) / PI))) + 1.0).powf(0.1),
+                    Function::Griewangk => 1.0 + sum!(n, |i| sq!(vec[i]) / 4000.0) - product!(n, |i| cos!(vec[i] / sqrt!(((i + 1) as f64)))),
+                    Function::Levi13 => sq!(sin!(3.0 * PI * x)) + sq!(x - 1.0) * (1.0 + sq!(sin!(3.0 * PI * y))) + sq!(y - 1.0) * (1.0 + sq!(sin!(2.0 * PI * y))),
                     Function::Ackley => {
-                        20.0 + E - (20.0 * exp!(-0.2 * sqrt!(1.0 / (n as f64) * sum!(n, |i| sq!(vec[i])))))
-                            - exp!(1.0 / (n as f64) * sum!(n, |i| cos!(2.0 * PI * vec[i])))
-                    },
-                    Function::Levi13 => {
-                        sq!(sin!(3.0 * PI * x)) + sq!(x - 1.0) * (1.0 + sq!(sin!(3.0 * PI * y))) + sq!(y - 1.0) * (1.0 + sq!(sin!(2.0 * PI * y)))
-                    },
-                    Function::CrossInTray => {
-                        - 0.0001 * (abs!(sin!(x) * sin!(y) * exp!(abs!(100.0 - sqrt!(sq!(x) + sq!(y)) / PI))) + 1.0).powf(0.1)
-                    },
-                    Function::Eggholder => {
-                        - (y + 47.0) * sin!(sqrt!(abs!((x / 2.0) + y + 47.0))) - x * sin!(sqrt!(abs!(x - (y + 47.0))))
+                        20.0 + E - (20.0 * exp!(-0.2 * sqrt!(1.0 / (n as f64) * sum!(n, |i| sq!(vec[i]))))) - exp!(1.0 / (n as f64) * sum!(n, |i| cos!(2.0 * PI * vec[i])))
                     },
                     Function::GoldsteinPrice => {
                         (1.0 + sq!(x + y + 1.0) * (19.0 - 14.0*x + 3.0*sq!(x) - 14.0*y + 6.0*x*y + 3.0*sq!(y)))

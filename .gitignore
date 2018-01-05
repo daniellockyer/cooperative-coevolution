@@ -3,3 +3,4 @@ Cargo.lock
 **/*.rs.bk
 results/
 perf.data*
+.Rproj.user
