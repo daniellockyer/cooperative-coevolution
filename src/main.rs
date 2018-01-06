@@ -4,11 +4,12 @@ extern crate bit_vec;
 extern crate rand;
 
 use bit_vec::BitVec;
-use rand::{Rng, weak_rng};
+use rand::{Rng, thread_rng};
 use std::{env, u16, f64, usize};
 use std::f64::consts::{PI, E};
 use std::fs::File;
 use std::io::Write;
+use std::collections::HashMap;
 
 macro_rules! exp { ($a: expr) => ($a.exp()) }
 macro_rules! sqrt { ($a: expr) => ($a.sqrt()) }
@@ -22,7 +23,7 @@ macro_rules! mapc { ($n: expr, $body: expr) => ((0 .. $n).map($body).collect()) 
 
 const TARGET_LEN: usize = 16;
 const POPULATION_SIZE: usize = 100;
-const ITERATIONS: u32 = 1000;
+const MAX_FUNCTION_EVALUATIONS: u32 = 100_000;
 
 type SmBitVec = BitVec<u16>;
 
@@ -51,155 +52,109 @@ impl EvoPheno {
         EvoPheno::new(bv)
     }
 
-    fn crossover(&self, other: &EvoPheno) -> EvoPheno {
-        let mut new = self.val.clone();
-        let mut rand = weak_rng();
-
-        for i in 0..self.val.len() {
-            if rand.next_f64() < 0.6 {
-                new.set(i, other.val[i]);
-            }
-        }
-
-        EvoPheno::new(new)
-    }
-
-    fn multi_crossover(&self, other: &EvoPheno) -> EvoPheno {
-        let mut new = self.val.clone();
+    fn mutate(&mut self) {
+        let mut rand = thread_rng();
         let len = self.val.len();
-        let (low, high) = {
-            let a = weak_rng().gen_range(0, len);
-            let b = weak_rng().gen_range(0, len);
+        let prob = 1.0 / len as f64;
 
-            if a < b {
-                (a, b)
-            } else {
-                (b, a)
-            }
-        };
-
-        for i in 0..self.val.len() {
-            if i > low && i < high {
-                new.set(i, other.val[i]);
+        for i in 0..len {
+            if rand.next_f64() <= prob {
+                let cur_val = self.val[i];
+                self.val.set(i, !cur_val);
             }
         }
-
-        EvoPheno::new(new)
-    }
-
-    fn mutate(&self) -> EvoPheno {
-        let mut new = self.val.clone();
-        let mut rand = weak_rng();
-
-        for i in 0..self.val.len() {
-            if rand.next_f64() < (1f64 / self.val.len() as f64) {
-                new.set(i, !self.val[i]);
-            }
-        }
-
-        EvoPheno::new(new)
    }
 
-    fn clever_mutate(&self, iteration: u32) -> EvoPheno {
-        let mut new = self.val.clone();
-        let mut rand = weak_rng();
+    fn clever_mutate(&mut self, iteration: u32) {
+        let mut rand = thread_rng();
         let len = self.val.len();
 
         for i in 0..len {
-            let prob = 0.1 * (cos!(PI * (i / len) as f64 - PI * (iteration / ITERATIONS) as f64)) + 0.7;
+            //let prob = 0.00875 * (cos!(PI * (i / len) as f64 - PI * (iteration / MAX_FUNCTION_EVALUATIONS) as f64)) + 0.07125;
+            let prob = 0.01 * (cos!(PI * (i / len) as f64 - PI * (iteration / MAX_FUNCTION_EVALUATIONS) as f64)) + 0.02;
 
-            if rand.next_f64() < prob {
-                new.set(i, !self.val[i]);
+            if rand.next_f64() <= prob {
+                let cur_val = self.val[i];
+                self.val.set(i, !cur_val);
             }
         }
-
-        EvoPheno::new(new)
     }
 }
 
-fn tournament(population: &[EvoPheno], offset: usize) -> (usize, usize) {
-    let pop_slice = &population[offset..offset + POPULATION_SIZE];
+fn select_new_population(population: &[EvoPheno]) -> Vec<EvoPheno> {
+    let total_fitness = sum!(POPULATION_SIZE, |i| population[i].fitness);
+    let mut limits = Vec::new();
+    let mut limit_sum = 0.0;
 
-    let a_index = weak_rng().gen_range(0, POPULATION_SIZE) as usize;
-    let b_index = weak_rng().gen_range(0, POPULATION_SIZE) as usize;
-
-    if pop_slice[a_index].fitness < pop_slice[b_index].fitness {
-        (a_index, b_index)
-    } else {
-        (b_index, a_index)
+    for i in 0..POPULATION_SIZE {
+        limit_sum += 1.0 / (population[i].fitness / total_fitness);
+        limits.push(limit_sum);
     }
+
+    let mut new_population = Vec::new();
+    for i in 0..POPULATION_SIZE {
+        let mut j = 0;
+        let random_number = thread_rng().gen_range(0.0, limit_sum);
+
+        while random_number > limits[j] {
+            j += 1;
+        }
+
+        new_population.push(population[j].clone());
+    }
+
+    new_population
 }
 
-fn fitness_selection(population: &[EvoPheno], offset: usize) -> usize {
-    let mut s = population[offset..offset + POPULATION_SIZE].to_vec();
-    let total_fitness = sum!(s.len(), |i| s[i].fitness);
-    s.sort_by(|a: &EvoPheno, b: &EvoPheno| a.fitness.partial_cmp(&b.fitness).unwrap());
-    s.reverse();
+fn recombine(population: &[EvoPheno]) -> Vec<EvoPheno> {
+    let mut new_population = Vec::new();
+    let mut remaining_population = POPULATION_SIZE;
 
-    let random_number = weak_rng().gen_range(0.0, total_fitness);
-    let mut sum = 0.0;
+    for i in 0..POPULATION_SIZE/2 {
+        let index = i * 2;
 
-    for (i, item) in s.iter().enumerate() {
-        sum += item.fitness;
+        let random_number = thread_rng().gen_range(0, remaining_population);
+        new_population.push(population[random_number].clone());
+        remaining_population -= 1;
 
-        if sum > random_number {
-            return i;
+        let random_number = thread_rng().gen_range(0, remaining_population);
+        new_population.push(population[random_number].clone());
+        remaining_population -= 1;
+
+        if thread_rng().next_f64() <= 0.6 {
+            let len = TARGET_LEN;
+            let (low, high) = {
+                let a = thread_rng().gen_range(0, len);
+                let b = thread_rng().gen_range(0, len);
+
+                if a < b {
+                    (a, b)
+                } else {
+                    (b, a)
+                }
+            };
+
+            for i in low..high {
+                let temp_a = new_population[index].val[i];
+                let temp_b = new_population[index + 1].val[i];
+
+                new_population[index].val.set(i, temp_b);
+                new_population[index + 1].val.set(i, temp_a);
+            }
         }
     }
 
-    unreachable!();
+    new_population
 }
 
 fn real_val(bounds: f64, value: u16) -> f64 {
     -bounds + (f64::from(value) / f64::from(u16::MAX) * bounds * 2.0)
 }
 
-fn make_vec_species(population: &[EvoPheno], child_val: &SmBitVec, child_pos: usize, bounds: f64, top: bool) -> Vec<f64> {
-    let mut rand = weak_rng();
-    convert(&mapc!(population.len() / POPULATION_SIZE, |d| {
-        if d == child_pos {
-            child_val
-        } else {
-            let offset = (d as usize) * POPULATION_SIZE;
-            if top {
-                &get_best(&population[offset..offset + POPULATION_SIZE]).val
-            } else {
-                &population[rand.gen_range(offset, offset + POPULATION_SIZE)].val
-            }
-        }
-    }), bounds)
-}
-
-fn make_population(size: usize, function: &Function, dimensions: u32) -> Vec<EvoPheno> {
-    let bounds = function.bounds();
-    let func_dimensions = function.dimensions();
-    let mut rand = weak_rng();
-
-    let mut population: Vec<EvoPheno> = mapc!(size, |_|
-        EvoPheno::new_from_vec(&mapc!(dimensions, |_| rand.gen::<u16>()))
-    );
-
-    let pop2 = population.clone();
-
-    for p in &mut population {
-        p.fitness = if dimensions == func_dimensions {
-            function.calc(&make_vec(&p.val, bounds))
-        } else {
-            function.calc(&convert(&mapc!(func_dimensions, |d| {
-                let offset = (d as usize) * POPULATION_SIZE;
-                &pop2[rand.gen_range(offset, offset + POPULATION_SIZE)].val
-            }), bounds))
-        };
-    }
-
-    population
-}
-
-fn get_best(population: &[EvoPheno]) -> &EvoPheno {
-    population
-        .iter()
-        .min_by(|a: &&EvoPheno, b: &&EvoPheno| a.fitness.partial_cmp(&b.fitness).unwrap())
-        .unwrap()
+fn make_population(size: usize, dimensions: u32) -> Vec<EvoPheno> {
+    mapc!(size, |_|
+        EvoPheno::new_from_vec(&mapc!(dimensions, |_| thread_rng().gen::<u16>()))
+    )
 }
 
 fn make_vec(bv: &SmBitVec, bounds: f64) -> Vec<f64> {
@@ -225,114 +180,176 @@ fn run_ga(function: &Function) {
 
     let mut ga_file = File::create("ga.csv").unwrap();
     let mut ccga1_file = File::create("ccga1.csv").unwrap();
-    let mut ccga1_clever_file = File::create("ccga1_clever.csv").unwrap();
+    let mut ccga3_file = File::create("ccga3.csv").unwrap();
 
-    println!("GA");
-    for _ in 0..50 {
-        let mut population = make_population(POPULATION_SIZE, function, dimensions);
+    for r in 0..20 {
+        println!("GA-{}", r);
+        let mut best_found_cost = f64::MAX;
+        let mut fitness_data = Vec::new();
+        let mut function_evaluations = 0;
+        
+        let mut population = make_population(POPULATION_SIZE, dimensions);
+        for i in &mut population {
+            i.fitness = function.calc(&make_vec(&i.val, bounds));
+            function_evaluations += 1;
+        }
 
-        let fitness_data: Vec<f64> = mapc!(ITERATIONS, |iterations| {
-            let parent1_index = fitness_selection(&population, 0);
-            let parent2_index = fitness_selection(&population, 0);
-            //let parent1_index = tournament(&population, 0).0;
-            //let parent2_index = tournament(&population, 0).0;
+        while function_evaluations < MAX_FUNCTION_EVALUATIONS {
+            population = select_new_population(&population);
+            population = recombine(&population);
 
-            let mut child = population[parent1_index].multi_crossover(&population[parent2_index]).mutate();
-            child.fitness = function.calc(&make_vec(&child.val, bounds));
+            for i in &mut population {
+                i.mutate();
+                i.fitness = function.calc(&make_vec(&i.val, bounds));
+                function_evaluations += 1;
 
-            let new_index = tournament(&population, 0).1;
-            //let new_index = fitness_selection(&population, 0);
-            std::mem::replace(&mut population[new_index], child);
+                if i.fitness < best_found_cost {
+                    best_found_cost = i.fitness;
+                }
+            }
 
-            (get_best(&population).fitness - function_min).abs()
-        });
+            fitness_data.push(best_found_cost);
+        };
         let output: Vec<String> = fitness_data.iter().map(|n| n.to_string()).collect();
         writeln!(ga_file, "{}", output.join(",")).unwrap();
     }
 
-    println!("CCGA1");
-    for _ in 0..50 {
-        let mut population = make_population(POPULATION_SIZE * (dimensions as usize), function, 1);
+    for r in 0..10 {
+        println!("CCGA1-{}", r);
+        let mut best_species = Vec::new();
+        let mut fitness_data = Vec::new();
+        let mut function_evaluations = 0;
 
-        let fitness_data: Vec<f64> = mapc!(ITERATIONS, |iterations| {
-            for d in 0..dimensions {
-                let offset = (d as usize) * POPULATION_SIZE;
-                //let parent1_index = offset + tournament(&population, offset).0;
-                //let parent2_index = offset + tournament(&population, offset).0;
-                let parent1_index = offset + fitness_selection(&population, offset);
-                let parent2_index = offset + fitness_selection(&population, offset);
+        let mut population: Vec<Vec<EvoPheno>> = (0..dimensions).map(|_| make_population(POPULATION_SIZE, 1)).collect();
+        let pop2 = population.clone();
 
-                let mut child = population[parent1_index].multi_crossover(&population[parent2_index]).mutate();
-                child.fitness = function.calc(&make_vec_species(&population, &child.val, d as usize, bounds, true));
-
-                //let new_index = offset + tournament(&population, offset).1;
-                let new_index = offset + fitness_selection(&population, offset);
-                std::mem::replace(&mut population[new_index], child);
+        for d in 0..dimensions as usize {
+            for (i, individual) in &mut population[d].iter_mut().enumerate() {
+                individual.fitness = function.calc(&convert(&mapc!(dimensions as usize, |dp| {
+                    if dp == i {
+                        &individual.val
+                    } else {
+                        let r = thread_rng().gen_range(0, POPULATION_SIZE);
+                        &pop2[dp][r].val
+                    }
+                }), bounds));
+                function_evaluations += 1;
             }
+        }
 
-            (function.calc(&convert(&mapc!(dimensions, |d| {
-                let offset = (d as usize) * POPULATION_SIZE;
-                &get_best(&population[offset..offset + POPULATION_SIZE]).val
-            }), bounds)) - function_min).abs()
-        });
-        let output: Vec<String> = fitness_data.iter().map(|n| n.to_string()).collect();
-        writeln!(ccga1_file, "{}", output.join(",")).unwrap();
+        for d in 0..dimensions as usize {
+            let rand = thread_rng().gen_range(0, POPULATION_SIZE);
+            best_species.push(population[d][rand].val.clone());
+        }
+
+        let mut best_found_cost = function.calc(&convert(&mapc!(dimensions as usize, |i| &best_species[i]), bounds));
+        function_evaluations += 1;
+
+        while function_evaluations < MAX_FUNCTION_EVALUATIONS {
+            for d in 0..dimensions as usize {
+                population[d] = select_new_population(&population[d]);
+                population[d] = recombine(&population[d]);
+
+                // mutate
+                for i in &mut population[d] {
+                    i.mutate();
+                }
+
+                let mut best_individual = 0;
+                let mut best_cost = f64::MAX;
+
+                for (i, individual) in population[d].iter_mut().enumerate() {
+                    individual.fitness = function.calc(&convert(&mapc!(dimensions as usize, |dp| {
+                        if dp == d {
+                            &individual.val
+                        } else {
+                            &best_species[dp]
+                        }
+                    }), bounds));
+
+                    function_evaluations += 1;
+
+                    if individual.fitness < best_cost {
+                        best_cost = individual.fitness;
+                        best_individual = i;
+                    }
+                }
+
+                best_species[d] = population[d][best_individual].val.clone();
+
+                let fitness = function.calc(&convert(&mapc!(dimensions as usize, |i| &best_species[i]), bounds));
+                function_evaluations += 1;
+                if fitness < best_found_cost {
+                    best_found_cost = fitness;
+                }
+            }
+            let output: Vec<String> = fitness_data.iter().map(|n| n.to_string()).collect();
+            writeln!(ccga1_file, "{}", output.join(",")).unwrap();
+        }
     }
 
-    println!("CCGA1 Clever");
+    /*for r in 0..10 {
+        println!("CCGA3-{}", r);
+        let mut best_found_cost = f64::MAX;
+        let mut fitness_data = Vec::new();
+        let mut function_evaluations = 0;
+        
+        let mut population = make_population(POPULATION_SIZE, dimensions);
+        for i in &mut population {
+            i.fitness = function.calc(&make_vec(&i.val, bounds));
+            function_evaluations += 1;
+        }
+
+        while function_evaluations < MAX_FUNCTION_EVALUATIONS {
+            population = select_new_population(&population);
+            population = recombine(&population);
+
+            for i in &mut population {
+                i.clever_mutate(function_evaluations);
+                i.fitness = function.calc(&make_vec(&i.val, bounds));
+                function_evaluations += 1;
+
+                if i.fitness < best_found_cost {
+                    best_found_cost = i.fitness;
+                }
+            }
+
+            fitness_data.push((best_found_cost - function_min).abs());
+        };
+        let output: Vec<String> = fitness_data.iter().map(|n| n.to_string()).collect();
+        writeln!(ccga3_file, "{}", output.join(",")).unwrap();
+    }*/
+
+    /*println!("CCGA3");
     for _ in 0..50 {
         let mut population = make_population(POPULATION_SIZE * (dimensions as usize), function, 1);
 
         let fitness_data: Vec<f64> = mapc!(ITERATIONS, |iterations| {
+            let mut to_replace: Vec<(usize, EvoPheno)> = Vec::new();
+
             for d in 0..dimensions {
                 let offset = (d as usize) * POPULATION_SIZE;
-                //let parent1_index = offset + tournament(&population, offset).0;
-                //let parent2_index = offset + tournament(&population, offset).0;
                 let parent1_index = offset + fitness_selection(&population, offset);
                 let parent2_index = offset + fitness_selection(&population, offset);
 
                 let mut child = population[parent1_index].multi_crossover(&population[parent2_index]).clever_mutate(iterations);
-                child.fitness = function.calc(&make_vec_species(&population, &child.val, d as usize, bounds, true));
+                child.fitness = function.calc(&make_vec_species(&population, &child.val, d as usize, bounds));
 
                 //let new_index = offset + tournament(&population, offset).1;
                 let new_index = offset + fitness_selection(&population, offset);
-                std::mem::replace(&mut population[new_index], child);
+                to_replace.push((new_index, child));
             }
 
-            (function.calc(&convert(&mapc!(dimensions, |d| {
-                let offset = (d as usize) * POPULATION_SIZE;
-                &get_best(&population[offset..offset + POPULATION_SIZE]).val
-            }), bounds)) - function_min).abs()
+            for (i, j) in to_replace {
+                if j.fitness < population[i].fitness {
+                    std::mem::replace(&mut population[i], j);
+                }
+            }
+
+            (get_best(&population).fitness - function_min).abs()
         });
         let output: Vec<String> = fitness_data.iter().map(|n| n.to_string()).collect();
-        writeln!(ccga1_clever_file, "{}", output.join(",")).unwrap();
-    }
-
-    /*for _ in 0..50 {
-        let mut population = make_population(POPULATION_SIZE * (dimensions as usize), function, 1);
-
-        let fitness_data: Vec<(f64, f64)> = mapc!(ITERATIONS, |iterations| {
-            for d in 0..dimensions {
-                let offset = (d as usize) * POPULATION_SIZE;
-                let parent1_index = offset + tournament(&population, offset).0;
-                let parent2_index = offset + tournament(&population, offset).0;
-
-                let mut child = population[parent1_index].multi_crossover(&population[parent2_index]).mutate();
-                let top_best_fitness = function.calc(&make_vec_species(&population, &child.val, d as usize, bounds, true));
-                let random_fitness = function.calc(&make_vec_species(&population, &child.val, d as usize, bounds, false));
-                child.fitness = top_best_fitness.min(random_fitness);
-
-                let new_index = offset + tournament(&population, offset).1;
-                std::mem::replace(&mut population[new_index], child);
-            }
-
-           (f64::from(iterations), (function.calc(&convert(&mapc!(dimensions, |d| {
-                let offset = (d as usize) * POPULATION_SIZE;
-                &get_best(&population[offset..offset + POPULATION_SIZE]).val
-            }), bounds)) - function_min).abs())
-
-        });
-        p_fitness_ccga2.lines("", fitness_data).line_width(1);
+        writeln!(ccga3_file, "{}", output.join(",")).unwrap();
     }*/
 }
 
@@ -482,3 +499,13 @@ mod tests {
         assert_approx_eq!(-2.0, real_val(5.0, u16::MAX/10*3), 1e-3f64);
     }
 }
+
+/*let parent1_index = fitness_selection(&population, 0);
+let parent2_index = fitness_selection(&population, 0);
+
+let mut child = population[parent1_index].multi_crossover(&population[parent2_index]).mutate();
+child.fitness = function.calc(&make_vec(&child.val, bounds));
+
+let new_index = tournament(&population, 0).1;
+//let new_index = fitness_selection(&population, 0);
+std::mem::replace(&mut population[new_index], child);*/
