@@ -1,35 +1,89 @@
-library(ggplot2)
-
-analyse <- function(filename, title) {
-  data <- read.csv(file="ga.csv", sep=",")
+analyse <- function(filename) {
+  data <- read.csv(file=filename, sep=",")
   mat <- as.matrix(data)
-  
-  m1 <- mat[-1]
-  row.names(m1) <- mat[,1]
-  
-  avg <- apply(m1, 2, mean)
+  avg <- apply(mat, 2, mean)
   avg = na.omit(avg)
   return(avg)
 }
 
 ga <- analyse("ga.csv")
 ccga1 <- analyse("ccga1.csv")
-#ccga3 <- analyse("ccga3.csv")
-
-#ymin <- min(ga, ccga1, ccga3)
-#ymax <- max(ga, ccga1, ccga3)
+ccga4 <- analyse("ccga1v.csv")
 
 ymin <- min(ga, ccga1)
 ymax <- max(ga, ccga1)
 
-plot(ga, type="l", col="blue", ylim=c(0, ymax), xaxs="i", xlab="Function Evaluations", ylab="Best Individual")
-par(new=T)
-plot(ccga1, type="l", col="red", ylim=c(0, ymax), xaxs="i", xaxt='n', yaxt='n', xlab="", ylab="")
+ymin <- min(ga, ccga1, ccga4)
+ymax <- max(ga, ccga1, ccga4)
+
+#png("/home/neo/files/notes/eoc/report/img/rastrigin.png", width=400, height=300)
+#plot(ga, type="l", col="blue", ylim=c(min(ga), ymax), xaxs="i", yaxs="i", xlab="Function Evaluations (1000s)", ylab="Best Individual", yaxt='n')
 #par(new=T)
-#plot(ccga3, type="l", col="green", ylim=c(0, ymax), xaxs="i", xaxt='n', yaxt='n', xlab="", ylab="")
-legend("topright",
-       lty=1, cex=0.8,
-       c("GA", "CCGA1", "CCGA3"),
-       col=c("blue", "red", "green"))
+#plot(ccga1, type="l", col="red", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", xaxt='n')
+#title("Rastrigin Function")
+#legend("topright", lty=1, cex=0.8, c("GA", "CCGA1"), col=c("blue", "red"))
+#dev.off()
 
+#png("/home/neo/files/notes/eoc/report/img/rastrigin-new.png", width=400, height=300)
+#plot(ga, type="l", col="blue", ylim=c(min(ga), ymax), xaxs="i", yaxs="i", xlab="Function Evaluations (1000s)", ylab="Best Individual", yaxt='n')
+#par(new=T)
+#plot(ccga1, type="l", col="red", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", xaxt='n')
+#par(new=T)
+#plot(ccga4, type="l", col="brown", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", xaxt='n')
+#title("Rastrigin Function")
+#legend("topright", lty=1, cex=0.8, c("GA", "CCGA1", "CCGA1-Variable"), col=c("blue", "red", "brown"))
+#dev.off()
 
+#png("/home/neo/files/notes/eoc/report/img/schwefel.png", width=400, height=300)
+#plot(ga, type="l", col="blue", ylim=c(min(ga), ymax), xaxs="i", yaxs="i", xlab="Function Evaluations (1000s)", ylab="Best Individual", yaxt='n')
+#par(new=T)
+#plot(ccga1, type="l", col="red", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", xaxt='n')
+#title("Schwefel Function")
+#legend("topright", lty=1, cex=0.8, c("GA", "CCGA1"), col=c("blue", "red"))
+#dev.off()
+
+#png("/home/neo/files/notes/eoc/report/img/schwefel-new.png", width=400, height=300)
+#plot(ga, type="l", col="blue", ylim=c(min(ga), ymax), xaxs="i", yaxs="i", xlab="Function Evaluations (1000s)", ylab="Best Individual", yaxt='n')
+#par(new=T)
+#plot(ccga1, type="l", col="red", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", xaxt='n')
+#par(new=T)
+#plot(ccga4, type="l", col="brown", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", xaxt='n')
+#title("Schwefel Function")
+#legend("topright", lty=1, cex=0.8, c("GA", "CCGA1", "CCGA1-Variable"), col=c("blue", "red", "brown"))
+#dev.off()
+
+png("/home/neo/files/notes/eoc/report/img/ackley-new.png", width=400, height=300)
+plot(ga, type="l", col="blue", ylim=c(min(ga), ymax), xaxs="i", yaxs="i", xlab="Function Evaluations (1000s)", ylab="Best Individual", yaxt='n')
+par(new=T)
+plot(ccga1, type="l", col="red", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", xaxt='n')
+par(new=T)
+plot(ccga4, type="l", col="brown", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", xaxt='n')
+title("Ackley Function")
+legend("topright", lty=1, cex=0.8, c("GA", "CCGA1", "CCGA1-Variable"), col=c("blue", "red", "brown"))
+dev.off()
+
+#png("/home/neo/files/notes/eoc/report/img/ackley.png", width=400, height=300)
+#plot(ga, type="l", col="blue", ylim=c(min(ga), ymax), xaxs="i", yaxs="i", xlab="Function Evaluations (1000s)", ylab="Best Individual", yaxt='n')
+#par(new=T)
+#plot(ccga1, type="l", col="red", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", xaxt='n')
+#title("Ackley Function")
+#legend("topright", lty=1, cex=0.8, c("GA", "CCGA1"), col=c("blue", "red"))
+#dev.off()
+
+#png("/home/neo/files/notes/eoc/report/img/griewangk.png", width=400, height=300)
+#plot(ga, type="l", col="blue", ylim=c(min(ga), ymax/10), xaxs="i", yaxs="i", xlab="Function Evaluations (1000s)", ylab="Best Individual")
+#par(new=T)
+#plot(ccga1, type="l", col="red", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", yaxt='n', xaxt='n')
+#title("Griewangk Function")
+#legend("topright", lty=1, cex=0.8, c("GA", "CCGA1"), col=c("blue", "red"))
+#dev.off()
+
+#png("/home/neo/files/notes/eoc/report/img/griewangk-new.png", width=400, height=300)
+#plot(ga, type="l", col="blue", ylim=c(min(ga), ymax/10), xaxs="i", yaxs="i", xlab="Function Evaluations (1000s)", ylab="Best Individual", yaxt='n')
+#par(new=T)
+#plot(ccga1, type="l", col="red", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", xaxt='n')
+#par(new=T)
+#plot(ccga4, type="l", col="brown", ylim=c(0, ymax/10), xaxs="i", yaxs="i", xlab="", ylab="", xaxt='n')
+#title("Griewangk Function")
+#legend("topright", lty=1, cex=0.8, c("GA", "CCGA1", "CCGA1-Variable"), col=c("blue", "red", "brown"))
+#dev.off()

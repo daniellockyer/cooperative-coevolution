@@ -7,7 +7,6 @@ authors = ["Daniel Lockyer <thisisdaniellockyer@gmail.com>"]
 rand = "0.4"
 assert_approx_eq = "1.0"
 bit-vec = { git="https://github.com/neosilky/bit-vec.git" }
-flot = { git="https://github.com/stevedonovan/flot-rs.git" }
 
 [profile.release]
 debug = true
